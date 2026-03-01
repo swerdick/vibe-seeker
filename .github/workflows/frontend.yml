@@ -25,25 +25,27 @@ jobs:
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
 
+      - uses: extractions/setup-just@v3
+
       - name: Install dependencies
-        run: npm ci
+        run: just install
 
       - name: Type check
-        run: npx tsc --noEmit
+        run: just typecheck
 
       - name: Lint
-        run: npm run lint
+        run: just lint
 
       # TODO: Add Vitest unit tests (see 13-testing.md)
       # - name: Run unit tests
-      #   run: npx vitest run --reporter=junit --outputFile=test-results.xml
+      #   run: just test
 
       # TODO: Add npm audit (see 14-static-analysis-and-security.md)
       # - name: npm audit
       #   run: npm audit --omit=dev
 
       - name: Build
-        run: npm run build
+        run: just build
 
       - name: Build container
         run: docker build -f Containerfile .
