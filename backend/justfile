@@ -28,8 +28,11 @@ build:
 container:
     podman build -t {{image_name}} -f Containerfile .
 
-# Run all CI-equivalent checks locally
-check: vet test lint container
+# Run all code quality checks (vet, test, lint)
+ci: vet test-all lint
+
+# Run all CI-equivalent checks locally including container build
+check: ci container
 
 # Remove build artifacts
 clean:
