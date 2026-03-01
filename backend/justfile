@@ -1,0 +1,36 @@
+image_name := "vibe-seeker-api"
+
+# Run the server locally
+run:
+    go run ./cmd/server/
+
+# Run unit tests (skip integration tests)
+test:
+    go test ./... -short
+
+# Run all tests including integration
+test-all:
+    go test ./...
+
+# Run go vet
+vet:
+    go vet ./...
+
+# Run golangci-lint (install: brew install golangci-lint)
+lint:
+    golangci-lint run ./...
+
+# Build the binary
+build:
+    CGO_ENABLED=0 go build -o vibe-seeker ./cmd/server/
+
+# Build the container image
+container:
+    podman build -t {{image_name}} -f Containerfile .
+
+# Run all CI-equivalent checks locally
+check: vet test lint container
+
+# Remove build artifacts
+clean:
+    rm -f vibe-seeker
