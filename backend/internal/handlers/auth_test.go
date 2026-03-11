@@ -64,6 +64,7 @@ func TestLogin_SetsStateCookie(t *testing.T) {
 
 	if stateCookie == nil {
 		t.Fatal("expected oauth_state cookie to be set")
+		return
 	}
 
 	if stateCookie.Value == "" {
