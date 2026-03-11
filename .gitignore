@@ -1,6 +1,6 @@
 # Go
-backend/vibe-seeker
-backend/server
+backend/bin/
+backend/backend
 *.exe
 
 # Node
