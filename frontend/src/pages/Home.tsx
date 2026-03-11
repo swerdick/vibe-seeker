@@ -1,18 +1,18 @@
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from "react-router-dom";
 
 export default function Home() {
-  const navigate = useNavigate()
-  const token = localStorage.getItem('token')
+  const navigate = useNavigate();
+  const token = localStorage.getItem("token");
 
   if (!token) {
-    navigate('/', { replace: true })
-    return null
+    navigate("/", { replace: true });
+    return null;
   }
 
   const handleLogout = () => {
-    localStorage.removeItem('token')
-    navigate('/', { replace: true })
-  }
+    localStorage.removeItem("token");
+    navigate("/", { replace: true });
+  };
 
   return (
     <div className="page">
@@ -20,5 +20,5 @@ export default function Home() {
       <p>You are logged in with Spotify.</p>
       <button onClick={handleLogout}>Log out</button>
     </div>
-  )
+  );
 }
