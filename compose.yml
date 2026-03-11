@@ -1,0 +1,75 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: vibe_seeker
+      POSTGRES_PASSWORD: vibe_seeker
+      POSTGRES_DB: vibe_seeker
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vibe_seeker"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Dev services: source-mounted, native toolchain, hot reload
+  backend-dev:
+    profiles: ["dev"]
+    image: golang:1.24
+    working_dir: /app
+    command: go run .
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8080:8080"
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgres://vibe_seeker:vibe_seeker@postgres:5432/vibe_seeker?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend-dev:
+    profiles: ["dev"]
+    image: node:22
+    working_dir: /app
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    volumes:
+      - ./frontend:/app
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend-dev
+
+  # Prod services: built container images
+  backend:
+    profiles: ["prod"]
+    build:
+      context: ./backend
+      dockerfile: Containerfile
+    ports:
+      - "8080:8080"
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgres://vibe_seeker:vibe_seeker@postgres:5432/vibe_seeker?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    profiles: ["prod"]
+    build:
+      context: ./frontend
+      dockerfile: Containerfile
+    ports:
+      - "5173:3000"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:

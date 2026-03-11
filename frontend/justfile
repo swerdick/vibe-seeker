@@ -1,36 +1,43 @@
-image_name := "vibe-seeker-frontend"
+project_name := "vibe-seeker-frontend"
+image_tag := env("IMAGE_TAG", "latest")
+container_cli := env("CONTAINER_CLI", "podman")
 
-# Install dependencies
-install:
-    npm ci
+# List all available recipes
+default:
+    @just --list
 
 # Start dev server
 dev:
     npm run dev
 
-# Run TypeScript type checking
-typecheck:
-    npx tsc --noEmit
-
-# Run ESLint
-lint:
-    npm run lint
-
-# Run unit tests (requires vitest, see 13-testing.md)
-test:
-    npx vitest run
-
 # Build for production
 build:
     npm run build
 
-# Build the container image
-container:
-    podman build -t {{image_name}} -f Containerfile .
+# Run unit tests
+test:
+    npx vitest run
 
-# Run all CI-equivalent checks locally
-check: install typecheck lint build container
+# Run integration tests
+test-integration:
+    npx playwright test
+
+# Run all static analysis
+check:
+    npx tsc --noEmit
+    npx eslint .
+
+# Format code
+fmt:
+    npx prettier --write .
 
 # Remove build artifacts
 clean:
-    rm -rf dist
+    rm -rf dist/ node_modules/.cache
+
+# Build the container image
+container-build:
+    {{container_cli}} build -t {{project_name}}:{{image_tag}} -f Containerfile .
+
+# Full CI pipeline
+ci: check test test-integration build container-build
