@@ -10,7 +10,7 @@ Go HTTP server using `net/http` (Go 1.22+ pattern routing). Serves the REST API 
 ## Run Locally
 
 ```bash
-go run ./cmd/server/
+go run .
 ```
 
 The server starts on http://localhost:8080. Verify with:
@@ -35,9 +35,13 @@ podman run -p 8080:8080 vibe-seeker-api
 
 ```
 backend/
-├── cmd/
-│   └── server/
-│       └── main.go          # Entrypoint
+├── main.go                   # Entrypoint
+├── internal/
+│   ├── configuration/        # Environment / config loading
+│   ├── handlers/             # HTTP handlers
+│   ├── middleware/            # HTTP middleware
+│   ├── observability/        # OpenTelemetry setup
+│   └── webserver/            # Server setup and routing
 ├── Containerfile             # Multi-stage container build
 ├── go.mod
 └── README.md

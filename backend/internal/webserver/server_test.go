@@ -1,4 +1,4 @@
-package main
+package webserver
 
 import (
 	"encoding/json"
@@ -7,10 +7,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/pseudo/vibe-seeker/backend/internal/utility"
+	"github.com/pseudo/vibe-seeker/backend/internal/configuration"
 )
 
-func TestSetLogLevel(t *testing.T) {
+func TestParseLogLevel(t *testing.T) {
 	tests := []struct {
 		input string
 		want  slog.Level
@@ -24,21 +24,21 @@ func TestSetLogLevel(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		got := setLogLevel(tt.input)
+		got := ParseLogLevel(tt.input)
 		if got != tt.want {
-			t.Errorf("setLogLevel(%q) = %v, want %v", tt.input, got, tt.want)
+			t.Errorf("ParseLogLevel(%q) = %v, want %v", tt.input, got, tt.want)
 		}
 	}
 }
 
-func TestNewServer_HealthEndpoint(t *testing.T) {
-	cfg := utility.Config{
+func TestNew_HealthEndpoint(t *testing.T) {
+	cfg := configuration.Config{
 		AppName:    "test-app",
 		Port:       0,
 		CORSOrigin: "http://localhost:5173",
 	}
 
-	server := newServer(cfg)
+	server := New(cfg)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
 	rec := httptest.NewRecorder()
@@ -61,14 +61,14 @@ func TestNewServer_HealthEndpoint(t *testing.T) {
 	}
 }
 
-func TestNewServer_CORSHeaders(t *testing.T) {
-	cfg := utility.Config{
+func TestNew_CORSHeaders(t *testing.T) {
+	cfg := configuration.Config{
 		AppName:    "test-app",
 		Port:       0,
 		CORSOrigin: "http://localhost:3000",
 	}
 
-	server := newServer(cfg)
+	server := New(cfg)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
 	rec := httptest.NewRecorder()
@@ -83,14 +83,14 @@ func TestNewServer_CORSHeaders(t *testing.T) {
 	}
 }
 
-func TestNewServer_PreflightRequest(t *testing.T) {
-	cfg := utility.Config{
+func TestNew_PreflightRequest(t *testing.T) {
+	cfg := configuration.Config{
 		AppName:    "test-app",
 		Port:       0,
 		CORSOrigin: "http://localhost:5173",
 	}
 
-	server := newServer(cfg)
+	server := New(cfg)
 
 	req := httptest.NewRequest(http.MethodOptions, "/api/health", nil)
 	rec := httptest.NewRecorder()

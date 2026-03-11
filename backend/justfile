@@ -1,41 +1,47 @@
 set dotenv-load
 
-image_name := "vibe-seeker-api"
+project_name := "vibe-seeker-api"
+image_tag := env("IMAGE_TAG", "latest")
+container_cli := env("CONTAINER_CLI", "podman")
+
+# List all available recipes
+default:
+    @just --list
 
 # Run the server locally
-run:
-    go run ./cmd/server/
-
-# Run unit tests (skip integration tests)
-test:
-    go test ./... -short
-
-# Run all tests including integration
-test-all:
-    go test ./...
-
-# Run go vet
-vet:
-    go vet ./...
-
-# Run golangci-lint (install: brew install golangci-lint)
-lint:
-    golangci-lint run ./...
+dev:
+    go run .
 
 # Build the binary
 build:
-    CGO_ENABLED=0 go build -o vibe-seeker ./cmd/server/
+    CGO_ENABLED=0 go build -o bin/{{project_name}} .
 
-# Build the container image
-container:
-    podman build -t {{image_name}} -f Containerfile .
+# Run unit tests
+test:
+    go test ./... -short
 
-# Run all code quality checks (vet, test, lint)
-ci: vet test-all lint
+# Run integration tests
+test-integration:
+    go test ./... -run Integration
 
-# Run all CI-equivalent checks locally including container build
-check: ci container
+# Run all static analysis
+check:
+    go vet ./...
+    golangci-lint run ./...
+
+# Format code
+fmt:
+    gofmt -w .
+    goimports -w .
 
 # Remove build artifacts
 clean:
-    rm -f vibe-seeker
+    rm -rf bin/
+    go clean
+
+# Build the container image
+container-build:
+    {{container_cli}} build -t {{project_name}}:{{image_tag}} -f Containerfile .
+
+# Full CI pipeline
+ci: check test test-integration build container-build
