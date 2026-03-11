@@ -62,3 +62,8 @@ down:
 
 # Full CI pipeline
 ci: check test test-integration build container-build
+
+# Run everything: fmt, check, test, integration test, build, container build
+all:
+    just backend::all
+    just frontend::all
