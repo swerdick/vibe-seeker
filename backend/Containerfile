@@ -7,7 +7,7 @@ RUN go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=0 go build -o vibe-seeker ./cmd/server/
+RUN CGO_ENABLED=0 go build -o vibe-seeker .
 
 FROM debian:bookworm-slim as release
 

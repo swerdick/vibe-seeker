@@ -17,7 +17,7 @@ Find places where you'll love the music, it won't cost $100, and you might disco
 
 | Layer | Tech |
 |-------|------|
-| Backend | Go (`net/http`, stdlib-first), SQLite (`modernc.org/sqlite`) |
+| Backend | Go (`net/http`, stdlib-first), PostgreSQL |
 | Frontend | React 19, Vite, TypeScript, TanStack Query, React Map GL, Tailwind CSS |
 | Auth | Spotify OAuth2 → self-issued HMAC-SHA256 JWTs |
 | Hosting | AWS CloudFront + S3 (frontend) + App Runner (backend) |
@@ -36,7 +36,7 @@ Find places where you'll love the music, it won't cost $100, and you might disco
 
 ```bash
 cd backend
-go run ./cmd/server/
+go run .
 # http://localhost:8080/api/health
 ```
 

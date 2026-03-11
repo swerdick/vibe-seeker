@@ -16,12 +16,17 @@ import (
 )
 
 // Init configures the OpenTelemetry trace and metric providers.
+// When enabled is false, it returns a no-op shutdown function without starting any exporters.
 // The OTLP exporters read connection details from standard environment variables:
 //   - OTEL_EXPORTER_OTLP_ENDPOINT (e.g. http://localhost:4317)
 //   - OTEL_EXPORTER_OTLP_HEADERS (e.g. Authorization=Basic ...)
 //
 // Returns a shutdown function that flushes and closes all providers.
-func Init(ctx context.Context, serviceName, environment string) (shutdown func(context.Context) error, err error) {
+func Init(ctx context.Context, serviceName, environment string, enabled bool) (shutdown func(context.Context) error, err error) {
+	if !enabled {
+		return func(context.Context) error { return nil }, nil
+	}
+
 	res, err := resource.New(ctx,
 		resource.WithAttributes(
 			semconv.ServiceName(serviceName),
