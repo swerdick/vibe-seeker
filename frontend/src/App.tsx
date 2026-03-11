@@ -1,8 +1,8 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
-import Login from './pages/Login'
-import Callback from './pages/Callback'
-import Home from './pages/Home'
-import './App.css'
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import Login from "./pages/Login";
+import Callback from "./pages/Callback";
+import Home from "./pages/Home";
+import "./App.css";
 
 function App() {
   return (
@@ -13,7 +13,7 @@ function App() {
         <Route path="/home" element={<Home />} />
       </Routes>
     </BrowserRouter>
-  )
+  );
 }
 
-export default App
+export default App;
