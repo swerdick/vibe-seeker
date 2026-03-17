@@ -65,3 +65,7 @@ vibe-seeker/
 ## Design Docs
 
 Architecture, API design, data model, matching algorithm, and other design docs live in the [project-hub](../project-hub/concert-radar/docs/) repository.
+
+## License
+
+Licensed under the [Apache License 2.0](LICENSE).
