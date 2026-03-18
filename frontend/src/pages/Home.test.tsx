@@ -1,11 +1,15 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Home from "./Home";
 
+beforeEach(() => {
+  vi.restoreAllMocks();
+});
+
 afterEach(() => {
-  localStorage.clear();
+  vi.restoreAllMocks();
 });
 
 function renderHome() {
@@ -20,23 +24,66 @@ function renderHome() {
 }
 
 describe("Home", () => {
-  it("renders the home page when token is present", () => {
-    localStorage.setItem("token", "test-jwt");
+  it("renders the home page when authenticated", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          spotify_id: "spotify123",
+          display_name: "Test User",
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
     renderHome();
+    await waitFor(() => {
+      expect(screen.getByText(/Hello, Test User/)).toBeInTheDocument();
+    });
     expect(screen.getByText(/you are logged in/i)).toBeInTheDocument();
   });
 
-  it("does not render content when no token is present", () => {
+  it("redirects to login when not authenticated", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response("unauthorized", { status: 401 }),
+    );
+
     renderHome();
-    expect(screen.queryByText(/you are logged in/i)).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText("login page")).toBeInTheDocument();
+    });
   });
 
-  it("clears the token on logout", async () => {
-    localStorage.setItem("token", "test-jwt");
+  it("calls logout endpoint and redirects on logout", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+
+    // First call: /api/auth/me
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          spotify_id: "spotify123",
+          display_name: "Test User",
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
     renderHome();
+    await waitFor(() => {
+      expect(screen.getByText(/Hello, Test User/)).toBeInTheDocument();
+    });
+
+    // Second call: /api/auth/logout
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
 
     await userEvent.click(screen.getByRole("button", { name: /log out/i }));
-    expect(localStorage.getItem("token")).toBeNull();
-    expect(screen.getByText("login page")).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.getByText("login page")).toBeInTheDocument();
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/auth/logout", {
+      method: "POST",
+      credentials: "include",
+    });
   });
 });

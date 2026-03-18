@@ -1,28 +1,24 @@
-import { render } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { describe, expect, it } from "vitest";
 import Callback from "./Callback";
 
-afterEach(() => {
-  localStorage.clear();
-});
-
-function renderCallback(initialEntries: string[]) {
+function renderCallback() {
   return render(
-    <MemoryRouter initialEntries={initialEntries}>
-      <Callback />
+    <MemoryRouter initialEntries={["/callback"]}>
+      <Routes>
+        <Route path="/callback" element={<Callback />} />
+        <Route path="/home" element={<p>home page</p>} />
+      </Routes>
     </MemoryRouter>,
   );
 }
 
 describe("Callback", () => {
-  it("stores the token in localStorage when present", () => {
-    renderCallback(["/callback?token=test-jwt-token"]);
-    expect(localStorage.getItem("token")).toBe("test-jwt-token");
-  });
-
-  it("does not store anything when token is missing", () => {
-    renderCallback(["/callback"]);
-    expect(localStorage.getItem("token")).toBeNull();
+  it("redirects to /home", async () => {
+    renderCallback();
+    await waitFor(() => {
+      expect(screen.getByText("home page")).toBeInTheDocument();
+    });
   });
 });

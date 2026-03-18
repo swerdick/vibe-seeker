@@ -1,24 +1,28 @@
 package handlers
 
 import (
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"net/url"
 
 	"github.com/pseudo/vibe-seeker/backend/internal/auth"
+	"github.com/pseudo/vibe-seeker/backend/internal/middleware"
 )
 
 type AuthHandler struct {
 	Spotify     *auth.SpotifyClient
 	JWTSecret   string
 	FrontendURL string
+	SecureCookie bool
 }
 
-func NewAuthHandler(spotify *auth.SpotifyClient, jwtSecret, frontendURL string) *AuthHandler {
+func NewAuthHandler(spotify *auth.SpotifyClient, jwtSecret, frontendURL string, secureCookie bool) *AuthHandler {
 	return &AuthHandler{
-		Spotify:     spotify,
-		JWTSecret:   jwtSecret,
-		FrontendURL: frontendURL,
+		Spotify:      spotify,
+		JWTSecret:    jwtSecret,
+		FrontendURL:  frontendURL,
+		SecureCookie: secureCookie,
 	}
 }
 
@@ -90,5 +94,45 @@ func (h *AuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, h.FrontendURL+"/callback?token="+url.QueryEscape(token), http.StatusFound)
+	http.SetCookie(w, &http.Cookie{
+		Name:     "session",
+		Value:    token,
+		Path:     "/api",
+		MaxAge:   86400,
+		HttpOnly: true,
+		Secure:   h.SecureCookie,
+		SameSite: http.SameSiteLaxMode,
+	})
+
+	http.Redirect(w, r, h.FrontendURL+"/callback", http.StatusFound)
+}
+
+// Me returns the authenticated user's identity from the JWT claims.
+func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.ClaimsFromContext(r.Context())
+	if claims == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"spotify_id":   claims.SpotifyID,
+		"display_name": claims.DisplayName,
+	})
+}
+
+// Logout clears the session cookie.
+func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     "session",
+		Value:    "",
+		Path:     "/api",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   h.SecureCookie,
+		SameSite: http.SameSiteLaxMode,
+	})
+
+	w.WriteHeader(http.StatusNoContent)
 }

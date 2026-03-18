@@ -19,39 +19,46 @@ Find places where you'll love the music, it won't cost $100, and you might disco
 |-------|------|
 | Backend | Go (`net/http`, stdlib-first), PostgreSQL |
 | Frontend | React 19, Vite, TypeScript, TanStack Query, React Map GL, Tailwind CSS |
-| Auth | Spotify OAuth2 → self-issued HMAC-SHA256 JWTs |
+| Auth | Spotify OAuth2 → self-issued HMAC-SHA256 JWTs (HttpOnly cookies) |
 | Hosting | AWS CloudFront + S3 (frontend) + App Runner (backend) |
 | Observability | OpenTelemetry → Grafana Cloud |
 | CI/CD | GitHub Actions |
 
 ## Prerequisites
 
-- [Go 1.23+](https://go.dev/dl/)
+- [Go 1.26+](https://go.dev/dl/)
 - [Node.js 22+](https://nodejs.org/)
 - [Podman](https://podman.io/)
+- [just](https://github.com/casey/just) (command runner)
 
 ## Getting Started
 
-### Backend
+### Quick Start (Containers)
 
 ```bash
-cd backend
-go run .
-# http://localhost:8080/api/health
+cp backend/.env.example backend/.env  # then fill in Spotify credentials and JWT_SECRET
+just dev                               # starts postgres, backend, and frontend
+# http://127.0.0.1:5173
 ```
 
-See [backend/README.md](backend/README.md) for container build and run instructions.
+> **Note:** Use `127.0.0.1` instead of `localhost` — the Spotify API forbids `localhost` in redirect URIs.
 
-### Frontend
+### Manual (No Containers)
 
 ```bash
+# Backend
+cd backend
+go run .
+# http://127.0.0.1:8080/api/health
+
+# Frontend (separate terminal)
 cd frontend
 npm install
 npm run dev
-# http://localhost:5173
+# http://127.0.0.1:5173
 ```
 
-See [frontend/README.md](frontend/README.md) for container build and run instructions.
+See [backend/README.md](backend/README.md) and [frontend/README.md](frontend/README.md) for more details.
 
 ## Project Structure
 
@@ -59,12 +66,23 @@ See [frontend/README.md](frontend/README.md) for container build and run instruc
 vibe-seeker/
 ├── backend/          # Go API server
 ├── frontend/         # React SPA
+├── compose.yml       # Local dev (postgres, backend, frontend)
+├── justfile          # Task runner recipes
 └── README.md
 ```
 
-## Design Docs
+## Useful Commands
 
-Architecture, API design, data model, matching algorithm, and other design docs live in the [project-hub](../project-hub/concert-radar/docs/) repository.
+```bash
+just dev              # Start all services for local development
+just ci               # Run full CI pipeline (lint, test, build, container build)
+just test             # Run unit tests (backend + frontend)
+just check            # Run static analysis (backend + frontend)
+just fmt              # Format code (backend + frontend)
+just up               # Start all services in production containers
+just down             # Stop all services
+```
+
 
 ## License
 

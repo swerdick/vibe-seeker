@@ -19,13 +19,10 @@ describe("Login", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders a Spotify login link pointing to the API", () => {
+  it("renders a Spotify login link as a relative URL", () => {
     renderLogin();
     const link = screen.getByRole("link", { name: /log in with spotify/i });
-    expect(link).toHaveAttribute(
-      "href",
-      expect.stringContaining("/api/auth/login"),
-    );
+    expect(link).toHaveAttribute("href", "/api/auth/login");
   });
 
   it("shows an error message when error param is present", () => {
