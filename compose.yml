@@ -18,7 +18,7 @@ services:
   # Dev services: source-mounted, native toolchain, hot reload
   backend-dev:
     profiles: ["dev"]
-    image: golang:1.24
+    image: golang:1.26
     working_dir: /app
     command: go run .
     volumes:
@@ -42,6 +42,8 @@ services:
       - ./frontend:/app
     ports:
       - "5173:5173"
+    environment:
+      API_URL: http://backend-dev:8080
     depends_on:
       - backend-dev
 

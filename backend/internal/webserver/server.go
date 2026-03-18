@@ -20,9 +20,14 @@ func New(cfg configuration.Config) *http.Server {
 	mux.HandleFunc("GET /api/health", handlers.HealthCheck)
 
 	spotify := auth.NewSpotifyClient(cfg.SpotifyClientID, cfg.SpotifyClientSecret, cfg.SpotifyRedirectURI)
-	authHandler := handlers.NewAuthHandler(spotify, cfg.JWTSecret, cfg.FrontendURL)
+	authHandler := handlers.NewAuthHandler(spotify, cfg.JWTSecret, cfg.FrontendURL, cfg.SecureCookie)
 	mux.HandleFunc("GET /api/auth/login", authHandler.Login)
 	mux.HandleFunc("GET /api/auth/callback", authHandler.Callback)
+	mux.HandleFunc("POST /api/auth/logout", authHandler.Logout)
+
+	// Protected routes — require a valid session cookie.
+	requireAuth := middleware.RequireAuth(cfg.JWTSecret)
+	mux.Handle("GET /api/auth/me", requireAuth(http.HandlerFunc(authHandler.Me)))
 
 	var handler http.Handler = mux
 	handler = middleware.CORS(cfg.CORSOrigin)(handler)

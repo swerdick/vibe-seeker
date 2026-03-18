@@ -1,19 +1,14 @@
 import { useEffect } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
 export default function Callback() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
 
   useEffect(() => {
-    const token = searchParams.get("token");
-    if (token) {
-      localStorage.setItem("token", token);
-      navigate("/home", { replace: true });
-    } else {
-      navigate("/", { replace: true });
-    }
-  }, [navigate, searchParams]);
+    // The session cookie is set by the backend automatically.
+    // Just redirect to the home page.
+    navigate("/home", { replace: true });
+  }, [navigate]);
 
   return (
     <div className="page">
