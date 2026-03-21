@@ -5,30 +5,41 @@ Go HTTP server using `net/http` (Go 1.22+ pattern routing). Serves the REST API 
 ## Prerequisites
 
 - [Go 1.23+](https://go.dev/dl/)
+- [just](https://github.com/casey/just) (task runner)
 - [Podman](https://podman.io/) (for container builds)
 
-## Run Locally
+## Configuration
+
+Copy the example env file and fill in your credentials:
 
 ```bash
-go run .
+cp .env.example .env
 ```
 
-The server starts on http://localhost:8080. Verify with:
+See `.env.example` for required and optional variables (Spotify credentials, JWT secret, database URL, etc.). The justfile auto-loads `.env` via `set dotenv-load`.
+
+## Development
 
 ```bash
-curl http://localhost:8080/api/health
+just dev          # Run the server locally
+just test         # Run unit tests
+just test-integration  # Run integration tests
+just check        # Run vet + golangci-lint
+just fmt          # Format code (gofmt + goimports)
 ```
 
-## Build Container
+## Build
 
 ```bash
-podman build -t vibe-seeker-api -f Containerfile .
+just build            # Build the Go binary
+just container-build  # Build the container image
 ```
 
-## Run with Podman
+## CI
 
 ```bash
-podman run -p 8080:8080 vibe-seeker-api
+just ci    # Full pipeline: check, test, test-integration, build, container-build
+just all   # fmt + ci
 ```
 
 ## Project Structure
@@ -37,12 +48,17 @@ podman run -p 8080:8080 vibe-seeker-api
 backend/
 ├── main.go                   # Entrypoint
 ├── internal/
+│   ├── auth/                 # Spotify OAuth client, JWT creation/parsing
 │   ├── configuration/        # Environment / config loading
 │   ├── handlers/             # HTTP handlers
-│   ├── middleware/            # HTTP middleware
+│   ├── middleware/            # HTTP middleware (CORS, auth)
 │   ├── observability/        # OpenTelemetry setup
+│   ├── store/                # Database connection, migrations, and data access
 │   └── webserver/            # Server setup and routing
+├── compose.yml               # Docker Compose for local Postgres
 ├── Containerfile             # Multi-stage container build
+├── .env.example              # Example environment variables
+├── justfile                  # Task runner recipes
 ├── go.mod
 └── README.md
 ```
