@@ -5,57 +5,49 @@ React 19 + TypeScript + Vite. Serves the single-page app for the Vibe Seeker NYC
 ## Prerequisites
 
 - [Node.js 22+](https://nodejs.org/)
+- [just](https://github.com/casey/just) (task runner)
 - [Podman](https://podman.io/) (for container builds)
 
-## Run Locally
+## Development
 
 ```bash
-npm install
-npm run dev
+npm install       # Install dependencies (first time)
+just dev          # Start dev server with HMR
+just test         # Run unit tests (vitest)
+just check        # TypeScript type-check + ESLint
+just fmt          # Format code with Prettier
 ```
 
-The dev server starts on http://localhost:5173 with hot module replacement.
+The dev server starts on http://127.0.0.1:5173 with hot module replacement.
 
-## Lint & Type Check
+## Build
 
 ```bash
-npm run lint
-npx tsc --noEmit
+just build            # Production build (output in dist/)
+just container-build  # Build the container image
 ```
 
-## Build for Production
+## CI
 
 ```bash
-npm run build
+just ci    # Full pipeline: check, test, test-integration, build, container-build
+just all   # fmt + ci
 ```
-
-Output goes to `dist/`.
-
-## Build Container
-
-```bash
-podman build -t vibe-seeker-frontend -f Containerfile .
-```
-
-## Run with Podman
-
-```bash
-podman run -p 3000:3000 vibe-seeker-frontend
-```
-
-The app is served at http://localhost:3000 via nginx with SPA routing.
 
 ## Project Structure
 
 ```
 frontend/
 ├── src/
-│   ├── App.tsx               # Root component
-│   └── main.tsx              # Entrypoint
+│   ├── App.tsx               # Root component with routing
+│   ├── main.tsx              # Entrypoint
+│   ├── pages/                # Page components (Login, Callback, Home)
+│   └── assets/               # Static assets
 ├── public/
 ├── index.html
 ├── Containerfile             # Multi-stage container build (node → nginx)
 ├── nginx.conf                # SPA-aware nginx config
+├── justfile                  # Task runner recipes
 ├── package.json
 ├── tsconfig.json
 ├── vite.config.ts
