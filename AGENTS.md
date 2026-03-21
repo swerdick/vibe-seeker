@@ -8,6 +8,10 @@ Never commit secrets. Never hardcode credentials in source files.
 
 **Important:** The Spotify API forbids `localhost` in redirect URIs. All local development URLs must use `127.0.0.1` (e.g., `http://127.0.0.1:5173`). Do not refactor these to `localhost`.
 
+## Dependencies
+
+Prefer the Go standard library and existing dependencies where possible. Before adding a new dependency, justify why the stdlib (or an existing dep) is insufficient for the task at hand. State the justification in conversation before adding it.
+
 ## Architecture
 
 Refer to `../project-hub/vibe-seeker/` for architectural documents.
