@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -13,8 +14,12 @@ type UserStore struct {
 }
 
 // NewUserStore creates a UserStore backed by the given connection pool.
-func NewUserStore(pool *pgxpool.Pool) *UserStore {
-	return &UserStore{pool: pool}
+// It returns an error if pool is nil.
+func NewUserStore(pool *pgxpool.Pool) (*UserStore, error) {
+	if pool == nil {
+		return nil, errors.New("store: nil connection pool")
+	}
+	return &UserStore{pool: pool}, nil
 }
 
 // UpsertUser inserts a new user or updates the existing row on login.

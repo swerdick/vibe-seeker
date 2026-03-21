@@ -17,14 +17,20 @@ import (
 
 // New builds the HTTP server with all routes and middleware wired up.
 // Middleware chain (outermost first): otelhttp → CORS → mux
-func New(cfg configuration.Config, pool *pgxpool.Pool) *http.Server {
+func New(cfg configuration.Config, pool *pgxpool.Pool) (*http.Server, error) {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", handlers.HealthCheck)
 
-	userStore := store.NewUserStore(pool)
+	userStore, err := store.NewUserStore(pool)
+	if err != nil {
+		return nil, fmt.Errorf("creating user store: %w", err)
+	}
 	spotify := auth.NewSpotifyClient(cfg.SpotifyClientID, cfg.SpotifyClientSecret, cfg.SpotifyRedirectURI)
-	authHandler := handlers.NewAuthHandler(spotify, userStore, cfg.JWTSecret, cfg.FrontendURL, cfg.SecureCookie)
+	authHandler, err := handlers.NewAuthHandler(spotify, userStore, cfg.JWTSecret, cfg.FrontendURL, cfg.SecureCookie)
+	if err != nil {
+		return nil, fmt.Errorf("creating auth handler: %w", err)
+	}
 
 	mux.HandleFunc("GET /api/auth/login", authHandler.Login)
 	mux.HandleFunc("GET /api/auth/callback", authHandler.Callback)
@@ -41,7 +47,7 @@ func New(cfg configuration.Config, pool *pgxpool.Pool) *http.Server {
 	return &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.Port),
 		Handler: handler,
-	}
+	}, nil
 }
 
 // ParseLogLevel converts a string log level to the corresponding slog.Level.

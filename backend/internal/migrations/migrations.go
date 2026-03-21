@@ -76,6 +76,12 @@ func parseMigrations(fsys fs.FS) ([]migration, error) {
 
 	result := make([]migration, 0, len(byVersion))
 	for _, m := range byVersion {
+		if m.up == "" {
+			return nil, fmt.Errorf("migration %03d: missing up SQL", m.version)
+		}
+		if m.down == "" {
+			return nil, fmt.Errorf("migration %03d: missing down SQL", m.version)
+		}
 		result = append(result, *m)
 	}
 	sort.Slice(result, func(i, j int) bool {

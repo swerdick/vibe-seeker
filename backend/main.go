@@ -40,19 +40,28 @@ func main() {
 		}
 	}()
 
-	pool, err := store.Connect(ctx, cfg.DatabaseURL)
+	startupCtx, startupCancel := context.WithTimeout(ctx, 30*time.Second)
+	defer startupCancel()
+
+	pool, err := store.Connect(startupCtx, cfg.DatabaseURL)
 	if err != nil {
 		slog.Error("failed to connect to database", "error", err)
 		os.Exit(1)
 	}
 	defer pool.Close()
 
-	if err := migrations.Migrate(ctx, pool); err != nil {
+	// TODO: acquire a Postgres advisory lock before migrating to prevent races
+	// in multi-instance deployments.
+	if err := migrations.Migrate(startupCtx, pool); err != nil {
 		slog.Error("failed to run migrations", "error", err)
 		os.Exit(1)
 	}
 
-	server := webserver.New(cfg, pool)
+	server, err := webserver.New(cfg, pool)
+	if err != nil {
+		slog.Error("failed to build server", "error", err)
+		os.Exit(1)
+	}
 
 	go func() {
 		slog.Info("starting server", "addr", server.Addr)

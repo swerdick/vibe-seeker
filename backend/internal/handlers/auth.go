@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -25,14 +26,20 @@ type AuthHandler struct {
 	SecureCookie bool
 }
 
-func NewAuthHandler(spotify *auth.SpotifyClient, users UserUpserter, jwtSecret, frontendURL string, secureCookie bool) *AuthHandler {
+func NewAuthHandler(spotify *auth.SpotifyClient, users UserUpserter, jwtSecret, frontendURL string, secureCookie bool) (*AuthHandler, error) {
+	if spotify == nil {
+		return nil, errors.New("auth: nil spotify client")
+	}
+	if users == nil {
+		return nil, errors.New("auth: nil user store")
+	}
 	return &AuthHandler{
 		Spotify:      spotify,
 		Users:        users,
 		JWTSecret:    jwtSecret,
 		FrontendURL:  frontendURL,
 		SecureCookie: secureCookie,
-	}
+	}, nil
 }
 
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
