@@ -39,9 +39,10 @@ func TestParseMigrations_SortsAndPairs(t *testing.T) {
 
 func TestParseMigrations_SkipsNonSQL(t *testing.T) {
 	fsys := fstest.MapFS{
-		"001_create_users.up.sql": {Data: []byte("CREATE TABLE users (id TEXT)")},
-		"migrations.go":           {Data: []byte("package migrations")},
-		"README.md":               {Data: []byte("# Migrations")},
+		"001_create_users.up.sql":   {Data: []byte("CREATE TABLE users (id TEXT)")},
+		"001_create_users.down.sql": {Data: []byte("DROP TABLE users")},
+		"migrations.go":             {Data: []byte("package migrations")},
+		"README.md":                 {Data: []byte("# Migrations")},
 	}
 
 	migrations, err := parseMigrations(fsys)
@@ -51,6 +52,28 @@ func TestParseMigrations_SkipsNonSQL(t *testing.T) {
 
 	if len(migrations) != 1 {
 		t.Fatalf("expected 1 migration, got %d", len(migrations))
+	}
+}
+
+func TestParseMigrations_MissingDown(t *testing.T) {
+	fsys := fstest.MapFS{
+		"001_create_users.up.sql": {Data: []byte("CREATE TABLE users (id TEXT)")},
+	}
+
+	_, err := parseMigrations(fsys)
+	if err == nil {
+		t.Fatal("expected error for missing down migration")
+	}
+}
+
+func TestParseMigrations_MissingUp(t *testing.T) {
+	fsys := fstest.MapFS{
+		"001_create_users.down.sql": {Data: []byte("DROP TABLE users")},
+	}
+
+	_, err := parseMigrations(fsys)
+	if err == nil {
+		t.Fatal("expected error for missing up migration")
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pseudo/vibe-seeker/backend/internal/configuration"
 )
 
@@ -31,6 +32,19 @@ func TestParseLogLevel(t *testing.T) {
 	}
 }
 
+func TestNew_NilPool(t *testing.T) {
+	cfg := configuration.Config{
+		AppName:    "test-app",
+		Port:       0,
+		CORSOrigin: "http://localhost:5173",
+	}
+
+	_, err := New(cfg, nil)
+	if err == nil {
+		t.Fatal("expected error for nil pool")
+	}
+}
+
 func TestNew_HealthEndpoint(t *testing.T) {
 	cfg := configuration.Config{
 		AppName:    "test-app",
@@ -38,7 +52,10 @@ func TestNew_HealthEndpoint(t *testing.T) {
 		CORSOrigin: "http://localhost:5173",
 	}
 
-	server := New(cfg, nil)
+	server, err := New(cfg, &pgxpool.Pool{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
 	rec := httptest.NewRecorder()
@@ -68,7 +85,10 @@ func TestNew_CORSHeaders(t *testing.T) {
 		CORSOrigin: "http://localhost:3000",
 	}
 
-	server := New(cfg, nil)
+	server, err := New(cfg, &pgxpool.Pool{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
 	rec := httptest.NewRecorder()
@@ -90,7 +110,10 @@ func TestNew_PreflightRequest(t *testing.T) {
 		CORSOrigin: "http://localhost:5173",
 	}
 
-	server := New(cfg, nil)
+	server, err := New(cfg, &pgxpool.Pool{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
 
 	req := httptest.NewRequest(http.MethodOptions, "/api/health", nil)
 	rec := httptest.NewRecorder()
