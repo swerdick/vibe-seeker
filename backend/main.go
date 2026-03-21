@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"github.com/pseudo/vibe-seeker/backend/internal/configuration"
+	"github.com/pseudo/vibe-seeker/backend/internal/migrations"
 	"github.com/pseudo/vibe-seeker/backend/internal/observability"
+	"github.com/pseudo/vibe-seeker/backend/internal/store"
 	"github.com/pseudo/vibe-seeker/backend/internal/webserver"
 )
 
@@ -38,7 +40,19 @@ func main() {
 		}
 	}()
 
-	server := webserver.New(cfg)
+	pool, err := store.Connect(ctx, cfg.DatabaseURL)
+	if err != nil {
+		slog.Error("failed to connect to database", "error", err)
+		os.Exit(1)
+	}
+	defer pool.Close()
+
+	if err := migrations.Migrate(ctx, pool); err != nil {
+		slog.Error("failed to run migrations", "error", err)
+		os.Exit(1)
+	}
+
+	server := webserver.New(cfg, pool)
 
 	go func() {
 		slog.Info("starting server", "addr", server.Addr)

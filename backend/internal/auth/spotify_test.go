@@ -64,8 +64,10 @@ func TestExchangeCode_Success(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]string{
-			"access_token": "mock-access-token",
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"access_token":  "mock-access-token",
+			"refresh_token": "mock-refresh-token",
+			"expires_in":    3600,
 		})
 	}))
 	defer server.Close()
@@ -73,13 +75,19 @@ func TestExchangeCode_Success(t *testing.T) {
 	c := NewSpotifyClient("client-id", "client-secret", "http://localhost:8080/callback")
 	c.TokenURL = server.URL
 
-	token, err := c.ExchangeCode("test-code")
+	tokenResp, err := c.ExchangeCode("test-code")
 	if err != nil {
 		t.Fatalf("ExchangeCode failed: %v", err)
 	}
 
-	if token != "mock-access-token" {
-		t.Errorf("token = %q, want mock-access-token", token)
+	if tokenResp.AccessToken != "mock-access-token" {
+		t.Errorf("AccessToken = %q, want mock-access-token", tokenResp.AccessToken)
+	}
+	if tokenResp.RefreshToken != "mock-refresh-token" {
+		t.Errorf("RefreshToken = %q, want mock-refresh-token", tokenResp.RefreshToken)
+	}
+	if tokenResp.ExpiresIn != 3600 {
+		t.Errorf("ExpiresIn = %d, want 3600", tokenResp.ExpiresIn)
 	}
 }
 
@@ -152,8 +160,10 @@ func TestFetchProfile_NonOKStatus(t *testing.T) {
 func TestFullOAuthFlow(t *testing.T) {
 	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]string{
-			"access_token": "mock-access-token",
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"access_token":  "mock-access-token",
+			"refresh_token": "mock-refresh-token",
+			"expires_in":    3600,
 		})
 	}))
 	defer tokenServer.Close()
@@ -174,12 +184,12 @@ func TestFullOAuthFlow(t *testing.T) {
 	c.TokenURL = tokenServer.URL
 	c.MeURL = meServer.URL
 
-	accessToken, err := c.ExchangeCode("auth-code")
+	tokenResp, err := c.ExchangeCode("auth-code")
 	if err != nil {
 		t.Fatalf("ExchangeCode failed: %v", err)
 	}
 
-	profile, err := c.FetchProfile(accessToken)
+	profile, err := c.FetchProfile(tokenResp.AccessToken)
 	if err != nil {
 		t.Fatalf("FetchProfile failed: %v", err)
 	}

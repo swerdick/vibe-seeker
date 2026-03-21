@@ -8,7 +8,11 @@ container_cli := env("CONTAINER_CLI", "podman")
 default:
     @just --list
 
-# Run the server locally
+# Run database migrations without starting the server
+migrate:
+    go run ./cmd/migrate
+
+# Run the server locally (migrations run on startup)
 dev:
     go run .
 
@@ -20,7 +24,7 @@ build:
 test:
     go test ./... -short
 
-# Run integration tests
+# Run integration tests (requires a running, migrated database)
 test-integration:
     go test ./... -run Integration
 
