@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -11,9 +12,24 @@ import (
 	"github.com/pseudo/vibe-seeker/backend/internal/middleware"
 )
 
+// mockUserStore implements UserUpserter for tests.
+type mockUserStore struct {
+	called      bool
+	lastID      string
+	lastDisplay string
+	err         error
+}
+
+func (m *mockUserStore) UpsertUser(_ context.Context, id, displayName, _, _ string, _ int) error {
+	m.called = true
+	m.lastID = id
+	m.lastDisplay = displayName
+	return m.err
+}
+
 func newTestHandler() *AuthHandler {
 	spotify := auth.NewSpotifyClient("client-id", "client-secret", "http://localhost:8080/api/auth/callback")
-	return NewAuthHandler(spotify, "jwt-secret", "http://localhost:5173", false)
+	return NewAuthHandler(spotify, &mockUserStore{}, "jwt-secret", "http://localhost:5173", false)
 }
 
 func TestLogin_RedirectsToSpotify(t *testing.T) {
@@ -250,14 +266,18 @@ func TestLogout_ClearsSessionCookie(t *testing.T) {
 
 // newTestHandlerWithMockSpotify creates an AuthHandler backed by a mock Spotify API
 // that returns a valid token exchange and profile response.
-func newTestHandlerWithMockSpotify(t *testing.T) (*AuthHandler, *httptest.Server) {
+func newTestHandlerWithMockSpotify(t *testing.T) (*AuthHandler, *mockUserStore, *httptest.Server) {
 	t.Helper()
 
 	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/token":
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]string{"access_token": "mock-access-token"})
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"access_token":  "mock-access-token",
+				"refresh_token": "mock-refresh-token",
+				"expires_in":    3600,
+			})
 		case "/v1/me":
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]string{"id": "spotify123", "display_name": "Test User"})
@@ -271,12 +291,13 @@ func newTestHandlerWithMockSpotify(t *testing.T) (*AuthHandler, *httptest.Server
 	spotify.MeURL = mock.URL + "/v1/me"
 	spotify.HTTPClient = mock.Client()
 
-	h := NewAuthHandler(spotify, "jwt-secret", "http://localhost:5173", false)
-	return h, mock
+	users := &mockUserStore{}
+	h := NewAuthHandler(spotify, users, "jwt-secret", "http://localhost:5173", false)
+	return h, users, mock
 }
 
 func TestCallback_Success_SetsSessionCookie(t *testing.T) {
-	h, mock := newTestHandlerWithMockSpotify(t)
+	h, _, mock := newTestHandlerWithMockSpotify(t)
 	defer mock.Close()
 
 	req := httptest.NewRequest(http.MethodGet, "/api/auth/callback?state=valid&code=test-code", nil)
@@ -324,7 +345,7 @@ func TestCallback_Success_SetsSessionCookie(t *testing.T) {
 }
 
 func TestCallback_Success_CookieProperties(t *testing.T) {
-	h, mock := newTestHandlerWithMockSpotify(t)
+	h, _, mock := newTestHandlerWithMockSpotify(t)
 	defer mock.Close()
 
 	req := httptest.NewRequest(http.MethodGet, "/api/auth/callback?state=valid&code=test-code", nil)
@@ -370,8 +391,29 @@ func TestCallback_Success_CookieProperties(t *testing.T) {
 	}
 }
 
+func TestCallback_Success_UpsertsUser(t *testing.T) {
+	h, users, mock := newTestHandlerWithMockSpotify(t)
+	defer mock.Close()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/auth/callback?state=valid&code=test-code", nil)
+	req.AddCookie(&http.Cookie{Name: "oauth_state", Value: "valid"})
+	rec := httptest.NewRecorder()
+
+	h.Callback(rec, req)
+
+	if !users.called {
+		t.Fatal("expected UpsertUser to be called")
+	}
+	if users.lastID != "spotify123" {
+		t.Errorf("UpsertUser id = %q, want %q", users.lastID, "spotify123")
+	}
+	if users.lastDisplay != "Test User" {
+		t.Errorf("UpsertUser displayName = %q, want %q", users.lastDisplay, "Test User")
+	}
+}
+
 func TestCallback_Success_RedirectsToFrontend(t *testing.T) {
-	h, mock := newTestHandlerWithMockSpotify(t)
+	h, _, mock := newTestHandlerWithMockSpotify(t)
 	defer mock.Close()
 
 	req := httptest.NewRequest(http.MethodGet, "/api/auth/callback?state=valid&code=test-code", nil)
@@ -398,7 +440,7 @@ func TestCallback_ExchangeCodeFailure(t *testing.T) {
 	spotify := auth.NewSpotifyClient("client-id", "client-secret", "http://localhost:5173/api/auth/callback")
 	spotify.TokenURL = mock.URL + "/api/token"
 	spotify.HTTPClient = mock.Client()
-	h := NewAuthHandler(spotify, "jwt-secret", "http://localhost:5173", false)
+	h := NewAuthHandler(spotify, &mockUserStore{}, "jwt-secret", "http://localhost:5173", false)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/auth/callback?state=valid&code=bad-code", nil)
 	req.AddCookie(&http.Cookie{Name: "oauth_state", Value: "valid"})

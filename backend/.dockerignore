@@ -1,2 +1,7 @@
 .env
 .git
+bin/
+compose.yml
+justfile
+README.md
+*.md

@@ -38,7 +38,7 @@ func TestNew_HealthEndpoint(t *testing.T) {
 		CORSOrigin: "http://localhost:5173",
 	}
 
-	server := New(cfg)
+	server := New(cfg, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
 	rec := httptest.NewRecorder()
@@ -68,7 +68,7 @@ func TestNew_CORSHeaders(t *testing.T) {
 		CORSOrigin: "http://localhost:3000",
 	}
 
-	server := New(cfg)
+	server := New(cfg, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
 	rec := httptest.NewRecorder()
@@ -90,7 +90,7 @@ func TestNew_PreflightRequest(t *testing.T) {
 		CORSOrigin: "http://localhost:5173",
 	}
 
-	server := New(cfg)
+	server := New(cfg, nil)
 
 	req := httptest.NewRequest(http.MethodOptions, "/api/health", nil)
 	rec := httptest.NewRecorder()

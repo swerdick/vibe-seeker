@@ -56,8 +56,15 @@ func (c *SpotifyClient) AuthorizeURL(state string) string {
 	return c.AuthURL + "?" + params.Encode()
 }
 
-// ExchangeCode trades an authorization code for a Spotify access token.
-func (c *SpotifyClient) ExchangeCode(code string) (string, error) {
+// TokenResponse holds the tokens returned by the Spotify token endpoint.
+type TokenResponse struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	ExpiresIn    int    `json:"expires_in"`
+}
+
+// ExchangeCode trades an authorization code for Spotify tokens.
+func (c *SpotifyClient) ExchangeCode(code string) (*TokenResponse, error) {
 	data := url.Values{
 		"grant_type":   {"authorization_code"},
 		"code":         {code},
@@ -66,7 +73,7 @@ func (c *SpotifyClient) ExchangeCode(code string) (string, error) {
 
 	req, err := http.NewRequest(http.MethodPost, c.TokenURL, strings.NewReader(data.Encode()))
 	if err != nil {
-		return "", fmt.Errorf("creating request: %w", err)
+		return nil, fmt.Errorf("creating request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -74,22 +81,20 @@ func (c *SpotifyClient) ExchangeCode(code string) (string, error) {
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("sending request: %w", err)
+		return nil, fmt.Errorf("sending request: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("spotify token endpoint returned %d", resp.StatusCode)
+		return nil, fmt.Errorf("spotify token endpoint returned %d", resp.StatusCode)
 	}
 
-	var tokenResp struct {
-		AccessToken string `json:"access_token"`
-	}
+	var tokenResp TokenResponse
 	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
-		return "", fmt.Errorf("decoding response: %w", err)
+		return nil, fmt.Errorf("decoding response: %w", err)
 	}
 
-	return tokenResp.AccessToken, nil
+	return &tokenResp, nil
 }
 
 // FetchProfile retrieves the authenticated user's Spotify profile.

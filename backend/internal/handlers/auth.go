@@ -1,25 +1,34 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/pseudo/vibe-seeker/backend/internal/auth"
 	"github.com/pseudo/vibe-seeker/backend/internal/middleware"
 )
 
+// UserUpserter persists user data on login.
+type UserUpserter interface {
+	UpsertUser(ctx context.Context, id, displayName, accessToken, refreshToken string, tokenExpiry int) error
+}
+
 type AuthHandler struct {
-	Spotify     *auth.SpotifyClient
-	JWTSecret   string
-	FrontendURL string
+	Spotify      *auth.SpotifyClient
+	Users        UserUpserter
+	JWTSecret    string
+	FrontendURL  string
 	SecureCookie bool
 }
 
-func NewAuthHandler(spotify *auth.SpotifyClient, jwtSecret, frontendURL string, secureCookie bool) *AuthHandler {
+func NewAuthHandler(spotify *auth.SpotifyClient, users UserUpserter, jwtSecret, frontendURL string, secureCookie bool) *AuthHandler {
 	return &AuthHandler{
 		Spotify:      spotify,
+		Users:        users,
 		JWTSecret:    jwtSecret,
 		FrontendURL:  frontendURL,
 		SecureCookie: secureCookie,
@@ -73,21 +82,28 @@ func (h *AuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accessToken, err := h.Spotify.ExchangeCode(code)
+	tokenResp, err := h.Spotify.ExchangeCode(code)
 	if err != nil {
 		slog.Error("failed to exchange code", "error", err)
 		http.Error(w, "failed to exchange code", http.StatusInternalServerError)
 		return
 	}
 
-	profile, err := h.Spotify.FetchProfile(accessToken)
+	profile, err := h.Spotify.FetchProfile(tokenResp.AccessToken)
 	if err != nil {
 		slog.Error("failed to fetch profile", "error", err)
 		http.Error(w, "failed to fetch profile", http.StatusInternalServerError)
 		return
 	}
 
-	token, err := auth.CreateToken(h.JWTSecret, profile.ID, profile.DisplayName)
+	tokenExpiry := int(time.Now().Unix()) + tokenResp.ExpiresIn
+	if err := h.Users.UpsertUser(r.Context(), profile.ID, profile.DisplayName, tokenResp.AccessToken, tokenResp.RefreshToken, tokenExpiry); err != nil {
+		slog.Error("failed to persist user", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	jwt, err := auth.CreateToken(h.JWTSecret, profile.ID, profile.DisplayName)
 	if err != nil {
 		slog.Error("failed to create token", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -96,7 +112,7 @@ func (h *AuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 
 	http.SetCookie(w, &http.Cookie{
 		Name:     "session",
-		Value:    token,
+		Value:    jwt,
 		Path:     "/api",
 		MaxAge:   86400,
 		HttpOnly: true,
