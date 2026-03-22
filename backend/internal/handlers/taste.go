@@ -151,7 +151,10 @@ func (h *TasteHandler) SyncTaste(w http.ResponseWriter, r *http.Request) {
 
 	weights := lastfm.ComputeTagWeights(artistTags, rankings)
 
-	if err := h.Genres.UpsertGenres(tagCtx, claims.SpotifyID, weights); err != nil {
+	// Use a fresh context for the DB write — the data is already in memory,
+	// so we don't want the Last.fm timeout to prevent saving results.
+	dbCtx := context.WithoutCancel(ctx)
+	if err := h.Genres.UpsertGenres(dbCtx, claims.SpotifyID, weights); err != nil {
 		observability.Logger(ctx).Error("failed to persist genre weights", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
