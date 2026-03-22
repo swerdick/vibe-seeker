@@ -16,6 +16,9 @@ frontend/dist/
 .vscode/
 *.swp
 
+# Coverage
+*.out
+
 # OS
 .DS_Store
 

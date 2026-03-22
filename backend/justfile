@@ -35,6 +35,13 @@ build:
 test:
     go test ./... -short
 
+# Run unit tests with coverage report
+test-cover:
+    go test ./... -short -coverprofile=coverage.out
+    go tool cover -func=coverage.out
+    @echo "---"
+    @echo "HTML report: go tool cover -html=coverage.out"
+
 # Run integration tests (requires a running, migrated database)
 test-integration:
     go test ./... -run Integration
