@@ -4,13 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"time"
 
 	"github.com/pseudo/vibe-seeker/backend/internal/auth"
 	"github.com/pseudo/vibe-seeker/backend/internal/middleware"
+	"github.com/pseudo/vibe-seeker/backend/internal/observability"
+	"github.com/pseudo/vibe-seeker/backend/internal/spotify"
 )
 
 // UserUpserter persists user data on login.
@@ -19,14 +20,14 @@ type UserUpserter interface {
 }
 
 type AuthHandler struct {
-	Spotify      *auth.SpotifyClient
+	Spotify      *spotify.Client
 	Users        UserUpserter
 	JWTSecret    string
 	FrontendURL  string
 	SecureCookie bool
 }
 
-func NewAuthHandler(spotify *auth.SpotifyClient, users UserUpserter, jwtSecret, frontendURL string, secureCookie bool) (*AuthHandler, error) {
+func NewAuthHandler(spotify *spotify.Client, users UserUpserter, jwtSecret, frontendURL string, secureCookie bool) (*AuthHandler, error) {
 	if spotify == nil {
 		return nil, errors.New("auth: nil spotify client")
 	}
@@ -45,7 +46,7 @@ func NewAuthHandler(spotify *auth.SpotifyClient, users UserUpserter, jwtSecret, 
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	state, err := auth.GenerateState()
 	if err != nil {
-		slog.Error("failed to generate oauth state", "error", err)
+		observability.Logger(r.Context()).Error("failed to generate oauth state", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -78,7 +79,7 @@ func (h *AuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if errParam := r.URL.Query().Get("error"); errParam != "" {
-		slog.Error("spotify auth error", "error", errParam)
+		observability.Logger(r.Context()).Error("spotify auth error", "error", errParam)
 		http.Redirect(w, r, h.FrontendURL+"/?error="+url.QueryEscape(errParam), http.StatusFound)
 		return
 	}
@@ -89,30 +90,30 @@ func (h *AuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokenResp, err := h.Spotify.ExchangeCode(code)
+	tokenResp, err := h.Spotify.ExchangeCode(r.Context(), code)
 	if err != nil {
-		slog.Error("failed to exchange code", "error", err)
+		observability.Logger(r.Context()).Error("failed to exchange code", "error", err)
 		http.Error(w, "failed to exchange code", http.StatusInternalServerError)
 		return
 	}
 
-	profile, err := h.Spotify.FetchProfile(tokenResp.AccessToken)
+	profile, err := h.Spotify.FetchProfile(r.Context(), tokenResp.AccessToken)
 	if err != nil {
-		slog.Error("failed to fetch profile", "error", err)
+		observability.Logger(r.Context()).Error("failed to fetch profile", "error", err)
 		http.Error(w, "failed to fetch profile", http.StatusInternalServerError)
 		return
 	}
 
 	tokenExpiry := int(time.Now().Unix()) + tokenResp.ExpiresIn
 	if err := h.Users.UpsertUser(r.Context(), profile.ID, profile.DisplayName, tokenResp.AccessToken, tokenResp.RefreshToken, tokenExpiry); err != nil {
-		slog.Error("failed to persist user", "error", err)
+		observability.Logger(r.Context()).Error("failed to persist user", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 
 	jwt, err := auth.CreateToken(h.JWTSecret, profile.ID, profile.DisplayName)
 	if err != nil {
-		slog.Error("failed to create token", "error", err)
+		observability.Logger(r.Context()).Error("failed to create token", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}

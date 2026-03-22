@@ -8,10 +8,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
-	"github.com/pseudo/vibe-seeker/backend/internal/auth"
 	"github.com/pseudo/vibe-seeker/backend/internal/configuration"
 	"github.com/pseudo/vibe-seeker/backend/internal/handlers"
+	"github.com/pseudo/vibe-seeker/backend/internal/lastfm"
 	"github.com/pseudo/vibe-seeker/backend/internal/middleware"
+	"github.com/pseudo/vibe-seeker/backend/internal/spotify"
 	"github.com/pseudo/vibe-seeker/backend/internal/store"
 )
 
@@ -26,8 +27,9 @@ func New(cfg configuration.Config, pool *pgxpool.Pool) (*http.Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("creating user store: %w", err)
 	}
-	spotify := auth.NewSpotifyClient(cfg.SpotifyClientID, cfg.SpotifyClientSecret, cfg.SpotifyRedirectURI)
-	authHandler, err := handlers.NewAuthHandler(spotify, userStore, cfg.JWTSecret, cfg.FrontendURL, cfg.SecureCookie)
+
+	spotifyClient := spotify.NewClient(cfg.SpotifyClientID, cfg.SpotifyClientSecret, cfg.SpotifyRedirectURI)
+	authHandler, err := handlers.NewAuthHandler(spotifyClient, userStore, cfg.JWTSecret, cfg.FrontendURL, cfg.SecureCookie)
 	if err != nil {
 		return nil, fmt.Errorf("creating auth handler: %w", err)
 	}
@@ -39,6 +41,14 @@ func New(cfg configuration.Config, pool *pgxpool.Pool) (*http.Server, error) {
 	// Protected routes — require a valid session cookie.
 	requireAuth := middleware.RequireAuth(cfg.JWTSecret)
 	mux.Handle("GET /api/auth/me", requireAuth(http.HandlerFunc(authHandler.Me)))
+
+	lastfmClient := lastfm.NewClient(cfg.LastFMAPIKey)
+	tasteHandler, err := handlers.NewTasteHandler(spotifyClient, lastfmClient, userStore, userStore, userStore)
+	if err != nil {
+		return nil, fmt.Errorf("creating taste handler: %w", err)
+	}
+	mux.Handle("POST /api/taste/sync", requireAuth(http.HandlerFunc(tasteHandler.SyncTaste)))
+	mux.Handle("GET /api/taste", requireAuth(http.HandlerFunc(tasteHandler.GetTaste)))
 
 	var handler http.Handler = mux
 	handler = middleware.CORS(cfg.CORSOrigin)(handler)

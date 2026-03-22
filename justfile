@@ -9,9 +9,9 @@ project_name := "vibe-seeker"
 image_tag := env("IMAGE_TAG", "latest")
 container_cli := env("CONTAINER_CLI", "podman")
 
-# Start infrastructure (postgres) for local development
-infra:
-    {{container_cli}} compose up -d
+# Start only the database
+db:
+    {{container_cli}} compose up -d postgres
 
 # Start all services for local development
 dev:

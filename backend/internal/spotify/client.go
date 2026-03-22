@@ -1,6 +1,7 @@
-package auth
+package spotify
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -9,20 +10,22 @@ import (
 )
 
 const (
-	DefaultAuthURL  = "https://accounts.spotify.com/authorize"
-	DefaultTokenURL = "https://accounts.spotify.com/api/token"
-	DefaultMeURL    = "https://api.spotify.com/v1/me"
-	Scopes          = "user-top-read"
+	DefaultAuthURL       = "https://accounts.spotify.com/authorize"
+	DefaultTokenURL      = "https://accounts.spotify.com/api/token"
+	DefaultMeURL         = "https://api.spotify.com/v1/me"
+	DefaultTopArtistsURL = "https://api.spotify.com/v1/me/top/artists"
+	Scopes               = "user-top-read"
 )
 
-// SpotifyClient handles communication with the Spotify API for OAuth and profile retrieval.
-type SpotifyClient struct {
+// Client handles communication with the Spotify API.
+type Client struct {
 	ClientID     string
 	ClientSecret string
 	RedirectURI  string
 	AuthURL      string
 	TokenURL     string
 	MeURL        string
+	TopArtistsURL string
 	HTTPClient   *http.Client
 }
 
@@ -32,20 +35,28 @@ type Profile struct {
 	DisplayName string `json:"display_name"`
 }
 
-func NewSpotifyClient(clientID, clientSecret, redirectURI string) *SpotifyClient {
-	return &SpotifyClient{
-		ClientID:     clientID,
-		ClientSecret: clientSecret,
-		RedirectURI:  redirectURI,
-		AuthURL:      DefaultAuthURL,
-		TokenURL:     DefaultTokenURL,
-		MeURL:        DefaultMeURL,
-		HTTPClient:   http.DefaultClient,
+// TokenResponse holds the tokens returned by the Spotify token endpoint.
+type TokenResponse struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	ExpiresIn    int    `json:"expires_in"`
+}
+
+func NewClient(clientID, clientSecret, redirectURI string) *Client {
+	return &Client{
+		ClientID:      clientID,
+		ClientSecret:  clientSecret,
+		RedirectURI:   redirectURI,
+		AuthURL:       DefaultAuthURL,
+		TokenURL:      DefaultTokenURL,
+		MeURL:         DefaultMeURL,
+		TopArtistsURL: DefaultTopArtistsURL,
+		HTTPClient:    http.DefaultClient,
 	}
 }
 
 // AuthorizeURL builds the Spotify OAuth authorization URL for the given state parameter.
-func (c *SpotifyClient) AuthorizeURL(state string) string {
+func (c *Client) AuthorizeURL(state string) string {
 	params := url.Values{
 		"client_id":     {c.ClientID},
 		"response_type": {"code"},
@@ -56,22 +67,15 @@ func (c *SpotifyClient) AuthorizeURL(state string) string {
 	return c.AuthURL + "?" + params.Encode()
 }
 
-// TokenResponse holds the tokens returned by the Spotify token endpoint.
-type TokenResponse struct {
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
-	ExpiresIn    int    `json:"expires_in"`
-}
-
 // ExchangeCode trades an authorization code for Spotify tokens.
-func (c *SpotifyClient) ExchangeCode(code string) (*TokenResponse, error) {
+func (c *Client) ExchangeCode(ctx context.Context, code string) (*TokenResponse, error) {
 	data := url.Values{
 		"grant_type":   {"authorization_code"},
 		"code":         {code},
 		"redirect_uri": {c.RedirectURI},
 	}
 
-	req, err := http.NewRequest(http.MethodPost, c.TokenURL, strings.NewReader(data.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.TokenURL, strings.NewReader(data.Encode()))
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
@@ -98,8 +102,8 @@ func (c *SpotifyClient) ExchangeCode(code string) (*TokenResponse, error) {
 }
 
 // FetchProfile retrieves the authenticated user's Spotify profile.
-func (c *SpotifyClient) FetchProfile(accessToken string) (*Profile, error) {
-	req, err := http.NewRequest(http.MethodGet, c.MeURL, nil)
+func (c *Client) FetchProfile(ctx context.Context, accessToken string) (*Profile, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.MeURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
