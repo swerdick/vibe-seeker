@@ -39,8 +39,11 @@ clean:
 container-build:
     {{container_cli}} build -t {{project_name}}:{{image_tag}} -f Containerfile .
 
-# Full CI pipeline
-ci: check test test-integration build container-build
+# Local CI pipeline (no container builds)
+ci: check test test-integration build
+
+# Full CI pipeline including container builds
+ci-full: ci container-build
 
 # Run everything: fmt, check, test, integration test, build, container build
-all: fmt ci
+all: fmt ci-full

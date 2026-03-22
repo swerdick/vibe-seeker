@@ -60,8 +60,11 @@ up:
 down:
     {{container_cli}} compose --profile dev --profile prod down
 
-# Full CI pipeline
-ci: check test test-integration build container-build
+# Local CI pipeline (no container builds)
+ci: check test test-integration build
+
+# Full CI pipeline including container builds
+ci-full: ci container-build
 
 # Run everything: fmt, check, test, integration test, build, container build
 all:
