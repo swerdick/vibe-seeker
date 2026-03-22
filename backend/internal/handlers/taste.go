@@ -136,15 +136,11 @@ func (h *TasteHandler) SyncTaste(w http.ResponseWriter, r *http.Request) {
 
 	artistTags := make(map[string][]lastfm.Tag)
 	for name := range seen {
-		select {
-		case <-tagCtx.Done():
+		if tagCtx.Err() != nil {
 			observability.Logger(ctx).Error("lastfm tag fetch timed out", "fetched", len(artistTags), "total", len(seen))
 			break
-		case <-ticker.C:
 		}
-		if tagCtx.Err() != nil {
-			break
-		}
+		<-ticker.C
 		tags, err := h.LastFM.FetchArtistTags(tagCtx, name)
 		if err != nil {
 			observability.Logger(ctx).Error("failed to fetch lastfm tags", "artist", name, "error", err)
