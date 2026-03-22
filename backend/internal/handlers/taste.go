@@ -125,15 +125,26 @@ func (h *TasteHandler) SyncTaste(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fetch Last.fm tags for each unique artist.
-	// Use a background context so a browser timeout doesn't cancel the sync mid-flight.
+	// Use a standalone timeout so the sync isn't killed by a browser disconnect
+	// but also can't run unbounded.
 	// Rate-limit to 5 req/sec (200ms interval) to stay within Last.fm's limits.
-	tagCtx := context.WithoutCancel(ctx)
+	tagCtx, tagCancel := context.WithTimeout(context.WithoutCancel(ctx), 1*time.Minute)
+	defer tagCancel()
+
 	ticker := time.NewTicker(200 * time.Millisecond)
 	defer ticker.Stop()
 
 	artistTags := make(map[string][]lastfm.Tag)
 	for name := range seen {
-		<-ticker.C
+		select {
+		case <-tagCtx.Done():
+			observability.Logger(ctx).Error("lastfm tag fetch timed out", "fetched", len(artistTags), "total", len(seen))
+			break
+		case <-ticker.C:
+		}
+		if tagCtx.Err() != nil {
+			break
+		}
 		tags, err := h.LastFM.FetchArtistTags(tagCtx, name)
 		if err != nil {
 			observability.Logger(ctx).Error("failed to fetch lastfm tags", "artist", name, "error", err)
@@ -144,7 +155,7 @@ func (h *TasteHandler) SyncTaste(w http.ResponseWriter, r *http.Request) {
 
 	weights := lastfm.ComputeTagWeights(artistTags, rankings)
 
-	if err := h.Genres.UpsertGenres(ctx, claims.SpotifyID, weights); err != nil {
+	if err := h.Genres.UpsertGenres(tagCtx, claims.SpotifyID, weights); err != nil {
 		observability.Logger(ctx).Error("failed to persist genre weights", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
