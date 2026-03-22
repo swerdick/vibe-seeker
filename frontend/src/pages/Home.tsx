@@ -102,10 +102,12 @@ export default function Home() {
               .map(([genre, weight]) => (
                 <li key={genre}>
                   <span className="genre-name">{genre}</span>
-                  <span
-                    className="genre-bar"
-                    style={{ width: `${weight * 100}%` }}
-                  />
+                  <span className="genre-bar-track">
+                    <span
+                      className="genre-bar"
+                      style={{ display: "block", width: `${weight * 100}%` }}
+                    />
+                  </span>
                 </li>
               ))}
           </ul>
