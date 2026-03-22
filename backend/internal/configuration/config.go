@@ -21,9 +21,11 @@ type Config struct {
 	FrontendURL         string
 	DatabaseURL         string
 	LastFMAPIKey        string
+	TicketmasterAPIKey  string
 	SecureCookie        bool
 }
 
+// NewConfig TODO: change localhost to 127.0.0.1
 func NewConfig() Config {
 	return Config{
 		Environment:         readEnvironmentVariable("ENVIRONMENT", "local"),
@@ -39,6 +41,7 @@ func NewConfig() Config {
 		FrontendURL:         readEnvironmentVariable("FRONTEND_URL", "http://localhost:5173"),
 		DatabaseURL:         readEnvironmentVariable("DATABASE_URL", "postgres://vibe_seeker:vibe_seeker@localhost:5432/vibe_seeker?sslmode=disable"),
 		LastFMAPIKey:        readEnvironmentVariable("LASTFM_API_KEY", ""),
+		TicketmasterAPIKey:  readEnvironmentVariable("TICKETMASTER_CONSUMER_KEY", ""),
 		SecureCookie:        readEnvironmentVariable("ENVIRONMENT", "local") != "local",
 	}
 }
