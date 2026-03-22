@@ -34,7 +34,7 @@ jobs:
           curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b $(go env GOPATH)/bin
 
       - name: Run CI pipeline
-        run: just ci
+        run: just ci-full
 
       # TODO: Add govulncheck
       # - name: govulncheck

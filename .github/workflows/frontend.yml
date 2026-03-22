@@ -33,7 +33,7 @@ jobs:
         run: npm ci
 
       - name: Run CI pipeline
-        run: just ci
+        run: just ci-full
 
       # TODO: Add npm audit (see 14-static-analysis-and-security.md)
       # - name: npm audit
