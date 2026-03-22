@@ -68,11 +68,15 @@ jobs:
               SCOPE="${BASH_REMATCH[2]}"
               DESC="${BASH_REMATCH[3]}"
 
+              # Strip parentheses from scope: (auth) -> auth
+              SCOPE="${SCOPE#(}"
+              SCOPE="${SCOPE%)}"
+
               # Format with scope if present
               if [ -n "$SCOPE" ]; then
-                ENTRY="- **${SCOPE}**: ${DESC} ${LINK}"
+                ENTRY="- ${LINK} **${SCOPE}**: ${DESC}"
               else
-                ENTRY="- ${DESC} ${LINK}"
+                ENTRY="- ${LINK} ${DESC}"
               fi
 
               # Append to the type's group
@@ -82,7 +86,7 @@ jobs:
                 UNGROUPED="${UNGROUPED}${ENTRY}\n"
               fi
             else
-              UNGROUPED="${UNGROUPED}- ${MSG} ${LINK}\n"
+              UNGROUPED="${UNGROUPED}- ${LINK} ${MSG}\n"
             fi
           done <<< "$COMMITS"
 
@@ -107,9 +111,11 @@ jobs:
             BREAKING_SECTION="## Breaking Changes\n\n"
             while IFS=$'\t' read -r HASH MSG; do
               LINK="[\`${HASH}\`](${REPO_URL}/commit/${HASH})"
-              BREAKING_SECTION+="- ${MSG} ${LINK}\n"
+              BREAKING_SECTION+="- ${LINK} ${MSG}\n"
             done <<< "$BREAKING"
             BODY="${BREAKING_SECTION}\n${BODY}"
+
+            gh pr edit "$PR_NUMBER" --add-label "breaking"
           fi
 
           # Preserve any manually written content above a marker, or replace entirely
@@ -126,3 +132,11 @@ jobs:
 
           # Update the PR description
           echo -e "$FINAL" | gh pr edit "$PR_NUMBER" --body-file -
+
+  label-paths:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/labeler@v5
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
