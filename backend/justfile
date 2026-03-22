@@ -20,6 +20,9 @@ db-down:
 migrate:
     go run ./cmd/migrate
 
+migrate-down:
+    go run ./cmd/migrate --down
+
 # Run the server locally (migrations run on startup)
 dev:
     go run .
