@@ -28,8 +28,9 @@ func TestLogger_WithSpan(t *testing.T) {
 
 	// Capture log output.
 	var buf bytes.Buffer
+	origLogger := slog.Default()
 	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
-	defer slog.SetDefault(slog.Default())
+	defer slog.SetDefault(origLogger)
 
 	logger := Logger(ctx)
 	logger.Info("test message")
