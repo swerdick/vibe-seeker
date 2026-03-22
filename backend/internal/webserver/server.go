@@ -14,6 +14,7 @@ import (
 	"github.com/pseudo/vibe-seeker/backend/internal/middleware"
 	"github.com/pseudo/vibe-seeker/backend/internal/spotify"
 	"github.com/pseudo/vibe-seeker/backend/internal/store"
+	"github.com/pseudo/vibe-seeker/backend/internal/ticketmaster"
 )
 
 // New builds the HTTP server with all routes and middleware wired up.
@@ -49,6 +50,18 @@ func New(cfg configuration.Config, pool *pgxpool.Pool) (*http.Server, error) {
 	}
 	mux.Handle("POST /api/vibe/sync", requireAuth(http.HandlerFunc(vibeHandler.SyncVibe)))
 	mux.Handle("GET /api/vibe", requireAuth(http.HandlerFunc(vibeHandler.GetVibe)))
+
+	tmClient := ticketmaster.NewClient(cfg.TicketmasterAPIKey)
+	venueStore, err := store.NewVenueStore(pool)
+	if err != nil {
+		return nil, fmt.Errorf("creating venue store: %w", err)
+	}
+	venueHandler, err := handlers.NewVenueHandler(tmClient, venueStore)
+	if err != nil {
+		return nil, fmt.Errorf("creating venue handler: %w", err)
+	}
+	mux.Handle("POST /api/venues/sync", requireAuth(http.HandlerFunc(venueHandler.SyncVenues)))
+	mux.Handle("GET /api/venues", requireAuth(http.HandlerFunc(venueHandler.GetVenues)))
 
 	var handler http.Handler = mux
 	handler = middleware.CORS(cfg.CORSOrigin)(handler)
