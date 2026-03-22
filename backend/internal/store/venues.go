@@ -243,7 +243,7 @@ func (s *VenueStore) GetVenueFetchedAt(ctx context.Context, dataSource string) (
 // GetVenues returns all venues.
 func (s *VenueStore) GetVenues(ctx context.Context) ([]Venue, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, name, latitude, longitude, COALESCE(address, ''), city, state,
+		SELECT id, name, latitude, longitude, COALESCE(address, ''), COALESCE(city, ''), COALESCE(state, ''),
 		       COALESCE(image_url, ''), box_office_info, COALESCE(parking_detail, ''),
 		       general_info, ada,
 		       shows_tracked, data_source, COALESCE(tm_id, ''), fetched_at

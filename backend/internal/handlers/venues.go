@@ -85,6 +85,9 @@ func (h *VenueHandler) SyncVenues(w http.ResponseWriter, r *http.Request) {
 
 	// TTL check: skip if data is fresh.
 	lastFetched, err := h.Venues.GetVenueFetchedAt(ctx, "ticketmaster")
+	if err != nil {
+		log.Error("failed to check venue TTL, proceeding with sync", "error", err)
+	}
 	if err == nil && lastFetched != nil && time.Since(*lastFetched) < venueTTL {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{

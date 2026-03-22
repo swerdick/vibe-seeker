@@ -74,6 +74,7 @@ export default function Home() {
   const handleVenueSync = () => {
     setVenuesSyncing(true);
     setVenueError(null);
+    setVenueCount(null);
     fetch("/api/venues/sync", { method: "POST", credentials: "include" })
       .then((res) => {
         if (!res.ok) throw new Error("venue sync failed");
