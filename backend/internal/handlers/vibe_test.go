@@ -113,12 +113,12 @@ func newMockServers(t *testing.T) (*spotify.Client, *lastfm.Client, func()) {
 	return sp, lfm, cleanup
 }
 
-func TestSyncTaste_Success(t *testing.T) {
+func TestSyncVibe_Success(t *testing.T) {
 	sp, lfm, cleanup := newMockServers(t)
 	defer cleanup()
 
 	genreStore := &mockGenreStore{}
-	h, err := NewTasteHandler(sp, lfm,
+	h, err := NewVibeHandler(sp, lfm,
 		&mockTokenReader{tokens: &store.UserTokens{
 			AccessToken: "valid-token", RefreshToken: "refresh", TokenExpiry: int(time.Now().Unix()) + 3600,
 		}},
@@ -126,14 +126,14 @@ func TestSyncTaste_Success(t *testing.T) {
 		genreStore,
 	)
 	if err != nil {
-		t.Fatalf("NewTasteHandler: %v", err)
+		t.Fatalf("NewVibeHandler: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/api/taste/sync", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/vibe/sync", nil)
 	req = addTestClaims(t, req)
 	rec := httptest.NewRecorder()
 
-	h.SyncTaste(rec, req)
+	h.SyncVibe(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
@@ -156,32 +156,32 @@ func TestSyncTaste_Success(t *testing.T) {
 	}
 }
 
-func TestSyncTaste_Unauthorized(t *testing.T) {
+func TestSyncVibe_Unauthorized(t *testing.T) {
 	sp, lfm, cleanup := newMockServers(t)
 	defer cleanup()
 
-	h, _ := NewTasteHandler(sp, lfm,
+	h, _ := NewVibeHandler(sp, lfm,
 		&mockTokenReader{tokens: &store.UserTokens{}},
 		&mockTokenWriter{},
 		&mockGenreStore{},
 	)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/taste/sync", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/vibe/sync", nil)
 	rec := httptest.NewRecorder()
 
-	h.SyncTaste(rec, req)
+	h.SyncVibe(rec, req)
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Errorf("expected 401, got %d", rec.Code)
 	}
 }
 
-func TestSyncTaste_TokenRefresh(t *testing.T) {
+func TestSyncVibe_TokenRefresh(t *testing.T) {
 	sp, lfm, cleanup := newMockServers(t)
 	defer cleanup()
 
 	tokenWriter := &mockTokenWriter{}
-	h, _ := NewTasteHandler(sp, lfm,
+	h, _ := NewVibeHandler(sp, lfm,
 		&mockTokenReader{tokens: &store.UserTokens{
 			AccessToken: "expired-token", RefreshToken: "refresh", TokenExpiry: int(time.Now().Unix()) - 100,
 		}},
@@ -189,11 +189,11 @@ func TestSyncTaste_TokenRefresh(t *testing.T) {
 		&mockGenreStore{},
 	)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/taste/sync", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/vibe/sync", nil)
 	req = addTestClaims(t, req)
 	rec := httptest.NewRecorder()
 
-	h.SyncTaste(rec, req)
+	h.SyncVibe(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
@@ -204,24 +204,24 @@ func TestSyncTaste_TokenRefresh(t *testing.T) {
 	}
 }
 
-func TestGetTaste_Success(t *testing.T) {
+func TestGetVibe_Success(t *testing.T) {
 	sp, lfm, cleanup := newMockServers(t)
 	defer cleanup()
 
 	genreStore := &mockGenreStore{
 		getGenres: map[string]float32{"rock": 1.0, "indie": 0.7},
 	}
-	h, _ := NewTasteHandler(sp, lfm,
+	h, _ := NewVibeHandler(sp, lfm,
 		&mockTokenReader{tokens: &store.UserTokens{}},
 		&mockTokenWriter{},
 		genreStore,
 	)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/taste", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/vibe", nil)
 	req = addTestClaims(t, req)
 	rec := httptest.NewRecorder()
 
-	h.GetTaste(rec, req)
+	h.GetVibe(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
@@ -241,20 +241,20 @@ func TestGetTaste_Success(t *testing.T) {
 	}
 }
 
-func TestGetTaste_Unauthorized(t *testing.T) {
+func TestGetVibe_Unauthorized(t *testing.T) {
 	sp, lfm, cleanup := newMockServers(t)
 	defer cleanup()
 
-	h, _ := NewTasteHandler(sp, lfm,
+	h, _ := NewVibeHandler(sp, lfm,
 		&mockTokenReader{tokens: &store.UserTokens{}},
 		&mockTokenWriter{},
 		&mockGenreStore{},
 	)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/taste", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/vibe", nil)
 	rec := httptest.NewRecorder()
 
-	h.GetTaste(rec, req)
+	h.GetVibe(rec, req)
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Errorf("expected 401, got %d", rec.Code)

@@ -12,12 +12,12 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [genres, setGenres] = useState<Record<string, number> | null>(null);
   const [syncing, setSyncing] = useState(false);
-  const [tasteError, setTasteError] = useState<string | null>(null);
+  const [vibeError, setVibeError] = useState<string | null>(null);
 
-  const fetchTaste = useCallback(() => {
-    fetch("/api/taste", { credentials: "include" })
+  const fetchVibe = useCallback(() => {
+    fetch("/api/vibe", { credentials: "include" })
       .then((res) => {
-        if (!res.ok) throw new Error("failed to load taste");
+        if (!res.ok) throw new Error("failed to load vibe");
         return res.json();
       })
       .then((data: { genres: Record<string, number>; genre_count: number }) => {
@@ -45,23 +45,23 @@ export default function Home() {
 
   useEffect(() => {
     if (user) {
-      fetchTaste();
+      fetchVibe();
     }
-  }, [user, fetchTaste]);
+  }, [user, fetchVibe]);
 
   const handleSync = () => {
     setSyncing(true);
-    setTasteError(null);
-    fetch("/api/taste/sync", { method: "POST", credentials: "include" })
+    setVibeError(null);
+    fetch("/api/vibe/sync", { method: "POST", credentials: "include" })
       .then((res) => {
         if (!res.ok) throw new Error("sync failed");
         return res.json();
       })
       .then(() => {
-        fetchTaste();
+        fetchVibe();
       })
       .catch(() => {
-        setTasteError("Failed to sync taste from Spotify.");
+        setVibeError("Failed to sync vibe from Spotify.");
       })
       .finally(() => {
         setSyncing(false);
@@ -90,9 +90,9 @@ export default function Home() {
       <h1>Hello, {user?.display_name}</h1>
       <p>You are logged in with Spotify.</p>
       <button className="button" onClick={handleSync} disabled={syncing}>
-        {syncing ? "Syncing..." : "Sync Taste"}
+        {syncing ? "Syncing..." : "Sync Vibe"}
       </button>
-      {tasteError && <p className="error">{tasteError}</p>}
+      {vibeError && <p className="error">{vibeError}</p>}
       {genres && Object.keys(genres).length > 0 && (
         <div className="genre-list">
           <h2>Your Top Genres</h2>

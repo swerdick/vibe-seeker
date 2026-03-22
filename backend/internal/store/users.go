@@ -80,7 +80,7 @@ func (s *UserStore) UpdateTokens(ctx context.Context, userID, accessToken, refre
 
 // UpsertGenres replaces a user's genre weights atomically.
 // It deletes existing genres and inserts the new set within a transaction,
-// then updates taste_synced_at on the users row.
+// then updates vibe_synced_at on the users row.
 func (s *UserStore) UpsertGenres(ctx context.Context, userID string, genres map[string]float32) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -102,8 +102,8 @@ func (s *UserStore) UpsertGenres(ctx context.Context, userID string, genres map[
 		return fmt.Errorf("inserting genres for user %s: %w", userID, err)
 	}
 
-	if _, err := tx.Exec(ctx, `UPDATE users SET taste_synced_at = NOW(), updated_at = NOW() WHERE id = $1`, userID); err != nil {
-		return fmt.Errorf("updating taste_synced_at for user %s: %w", userID, err)
+	if _, err := tx.Exec(ctx, `UPDATE users SET vibe_synced_at = NOW(), updated_at = NOW() WHERE id = $1`, userID); err != nil {
+		return fmt.Errorf("updating vibe_synced_at for user %s: %w", userID, err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {

@@ -35,9 +35,9 @@ type GenreReader interface {
 	GetGenres(ctx context.Context, userID string) (map[string]float32, error)
 }
 
-// TasteHandler orchestrates taste profile syncing via Spotify (top artists)
+// VibeHandler orchestrates vibe profile syncing via Spotify (top artists)
 // and Last.fm (genre/tag enrichment).
-type TasteHandler struct {
+type VibeHandler struct {
 	Spotify      *spotify.Client
 	LastFM       *lastfm.Client
 	Tokens       TokenReader
@@ -46,26 +46,26 @@ type TasteHandler struct {
 	GenreReader  GenreReader
 }
 
-func NewTasteHandler(sp *spotify.Client, lfm *lastfm.Client, tokens TokenReader, tokenUpdater TokenWriter, genres interface {
+func NewVibeHandler(sp *spotify.Client, lfm *lastfm.Client, tokens TokenReader, tokenUpdater TokenWriter, genres interface {
 	GenreWriter
 	GenreReader
-}) (*TasteHandler, error) {
+}) (*VibeHandler, error) {
 	if sp == nil {
-		return nil, errors.New("taste: nil spotify client")
+		return nil, errors.New("vibe: nil spotify client")
 	}
 	if lfm == nil {
-		return nil, errors.New("taste: nil lastfm client")
+		return nil, errors.New("vibe: nil lastfm client")
 	}
 	if tokens == nil {
-		return nil, errors.New("taste: nil token reader")
+		return nil, errors.New("vibe: nil token reader")
 	}
 	if tokenUpdater == nil {
-		return nil, errors.New("taste: nil token writer")
+		return nil, errors.New("vibe: nil token writer")
 	}
 	if genres == nil {
-		return nil, errors.New("taste: nil genre store")
+		return nil, errors.New("vibe: nil genre store")
 	}
-	return &TasteHandler{
+	return &VibeHandler{
 		Spotify:      sp,
 		LastFM:       lfm,
 		Tokens:       tokens,
@@ -75,9 +75,9 @@ func NewTasteHandler(sp *spotify.Client, lfm *lastfm.Client, tokens TokenReader,
 	}, nil
 }
 
-// SyncTaste fetches the user's top artists from Spotify, enriches them with
+// SyncVibe fetches the user's top artists from Spotify, enriches them with
 // Last.fm tags, computes weighted tag scores, and persists the result.
-func (h *TasteHandler) SyncTaste(w http.ResponseWriter, r *http.Request) {
+func (h *VibeHandler) SyncVibe(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.ClaimsFromContext(r.Context())
 	if claims == nil {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -160,7 +160,7 @@ func (h *TasteHandler) SyncTaste(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	observability.Logger(ctx).Info("taste sync complete", "user", claims.SpotifyID, "tags", len(weights))
+	observability.Logger(ctx).Info("vibe sync complete", "user", claims.SpotifyID, "tags", len(weights))
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
@@ -169,8 +169,8 @@ func (h *TasteHandler) SyncTaste(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// GetTaste returns the authenticated user's genre weights.
-func (h *TasteHandler) GetTaste(w http.ResponseWriter, r *http.Request) {
+// GetVibe returns the authenticated user's genre weights.
+func (h *VibeHandler) GetVibe(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.ClaimsFromContext(r.Context())
 	if claims == nil {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -192,7 +192,7 @@ func (h *TasteHandler) GetTaste(w http.ResponseWriter, r *http.Request) {
 }
 
 // ensureValidToken returns a valid access token, refreshing it if expired.
-func (h *TasteHandler) ensureValidToken(ctx context.Context, userID string) (string, error) {
+func (h *VibeHandler) ensureValidToken(ctx context.Context, userID string) (string, error) {
 	tokens, err := h.Tokens.GetTokens(ctx, userID)
 	if err != nil {
 		return "", err

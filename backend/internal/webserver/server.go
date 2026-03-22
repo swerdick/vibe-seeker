@@ -43,12 +43,12 @@ func New(cfg configuration.Config, pool *pgxpool.Pool) (*http.Server, error) {
 	mux.Handle("GET /api/auth/me", requireAuth(http.HandlerFunc(authHandler.Me)))
 
 	lastfmClient := lastfm.NewClient(cfg.LastFMAPIKey)
-	tasteHandler, err := handlers.NewTasteHandler(spotifyClient, lastfmClient, userStore, userStore, userStore)
+	vibeHandler, err := handlers.NewVibeHandler(spotifyClient, lastfmClient, userStore, userStore, userStore)
 	if err != nil {
-		return nil, fmt.Errorf("creating taste handler: %w", err)
+		return nil, fmt.Errorf("creating vibe handler: %w", err)
 	}
-	mux.Handle("POST /api/taste/sync", requireAuth(http.HandlerFunc(tasteHandler.SyncTaste)))
-	mux.Handle("GET /api/taste", requireAuth(http.HandlerFunc(tasteHandler.GetTaste)))
+	mux.Handle("POST /api/vibe/sync", requireAuth(http.HandlerFunc(vibeHandler.SyncVibe)))
+	mux.Handle("GET /api/vibe", requireAuth(http.HandlerFunc(vibeHandler.GetVibe)))
 
 	var handler http.Handler = mux
 	handler = middleware.CORS(cfg.CORSOrigin)(handler)

@@ -29,7 +29,7 @@ const meResponse = () =>
     { status: 200, headers: { "Content-Type": "application/json" } },
   );
 
-const tasteResponse = (genres: Record<string, number> = {}) =>
+const vibeResponse = (genres: Record<string, number> = {}) =>
   new Response(
     JSON.stringify({ genres, genre_count: Object.keys(genres).length }),
     { status: 200, headers: { "Content-Type": "application/json" } },
@@ -39,7 +39,7 @@ describe("Home", () => {
   it("renders the home page when authenticated", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch");
     fetchMock.mockResolvedValueOnce(meResponse());
-    fetchMock.mockResolvedValueOnce(tasteResponse());
+    fetchMock.mockResolvedValueOnce(vibeResponse());
 
     renderHome();
     await waitFor(() => {
@@ -62,7 +62,7 @@ describe("Home", () => {
   it("calls logout endpoint and redirects on logout", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch");
     fetchMock.mockResolvedValueOnce(meResponse());
-    fetchMock.mockResolvedValueOnce(tasteResponse());
+    fetchMock.mockResolvedValueOnce(vibeResponse());
 
     renderHome();
     await waitFor(() => {
@@ -82,24 +82,24 @@ describe("Home", () => {
     });
   });
 
-  it("renders Sync Taste button after auth", async () => {
+  it("renders Sync Vibe button after auth", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch");
     fetchMock.mockResolvedValueOnce(meResponse());
-    fetchMock.mockResolvedValueOnce(tasteResponse());
+    fetchMock.mockResolvedValueOnce(vibeResponse());
 
     renderHome();
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: /sync taste/i }),
+        screen.getByRole("button", { name: /sync vibe/i }),
       ).toBeInTheDocument();
     });
   });
 
-  it("displays genres after loading taste", async () => {
+  it("displays genres after loading vibe", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch");
     fetchMock.mockResolvedValueOnce(meResponse());
     fetchMock.mockResolvedValueOnce(
-      tasteResponse({ rock: 1.0, indie: 0.7, "dream pop": 0.3 }),
+      vibeResponse({ rock: 1.0, indie: 0.7, "dream pop": 0.3 }),
     );
 
     renderHome();
@@ -113,7 +113,7 @@ describe("Home", () => {
   it("calls sync endpoint and refreshes genres on click", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch");
     fetchMock.mockResolvedValueOnce(meResponse());
-    fetchMock.mockResolvedValueOnce(tasteResponse()); // initial empty taste
+    fetchMock.mockResolvedValueOnce(vibeResponse()); // initial empty vibe
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify({ synced: true, genre_count: 2 }), {
         status: 200,
@@ -121,18 +121,18 @@ describe("Home", () => {
       }),
     ); // sync response
     fetchMock.mockResolvedValueOnce(
-      tasteResponse({ rock: 1.0, indie: 0.5 }),
-    ); // refreshed taste
+      vibeResponse({ rock: 1.0, indie: 0.5 }),
+    ); // refreshed vibe
 
     renderHome();
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: /sync taste/i }),
+        screen.getByRole("button", { name: /sync vibe/i }),
       ).toBeInTheDocument();
     });
 
     await userEvent.click(
-      screen.getByRole("button", { name: /sync taste/i }),
+      screen.getByRole("button", { name: /sync vibe/i }),
     );
 
     await waitFor(() => {
@@ -143,7 +143,7 @@ describe("Home", () => {
   it("shows error when sync fails", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch");
     fetchMock.mockResolvedValueOnce(meResponse());
-    fetchMock.mockResolvedValueOnce(tasteResponse());
+    fetchMock.mockResolvedValueOnce(vibeResponse());
     fetchMock.mockResolvedValueOnce(
       new Response("error", { status: 502 }),
     ); // sync fails
@@ -151,25 +151,25 @@ describe("Home", () => {
     renderHome();
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: /sync taste/i }),
+        screen.getByRole("button", { name: /sync vibe/i }),
       ).toBeInTheDocument();
     });
 
     await userEvent.click(
-      screen.getByRole("button", { name: /sync taste/i }),
+      screen.getByRole("button", { name: /sync vibe/i }),
     );
 
     await waitFor(() => {
       expect(
-        screen.getByText(/failed to sync taste/i),
+        screen.getByText(/failed to sync vibe/i),
       ).toBeInTheDocument();
     });
   });
 
-  it("handles empty taste gracefully", async () => {
+  it("handles empty vibe gracefully", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch");
     fetchMock.mockResolvedValueOnce(meResponse());
-    fetchMock.mockResolvedValueOnce(tasteResponse({}));
+    fetchMock.mockResolvedValueOnce(vibeResponse({}));
 
     renderHome();
     await waitFor(() => {
