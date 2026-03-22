@@ -1,0 +1,5 @@
+DROP TABLE IF EXISTS show_classifications;
+DROP TABLE IF EXISTS show_artists;
+DROP TABLE IF EXISTS artists;
+DROP TABLE IF EXISTS shows;
+DROP TABLE IF EXISTS venues;
