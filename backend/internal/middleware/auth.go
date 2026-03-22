@@ -40,3 +40,8 @@ func ClaimsFromContext(ctx context.Context) *auth.Claims {
 	claims, _ := ctx.Value(claimsKey).(*auth.Claims)
 	return claims
 }
+
+// ContextWithClaims returns a new context with the given claims attached.
+func ContextWithClaims(ctx context.Context, claims *auth.Claims) context.Context {
+	return context.WithValue(ctx, claimsKey, claims)
+}

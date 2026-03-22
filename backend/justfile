@@ -8,6 +8,14 @@ container_cli := env("CONTAINER_CLI", "podman")
 default:
     @just --list
 
+# Start only the database
+db:
+    {{container_cli}} compose -f ../compose.yml up -d postgres
+
+# Stop the database
+db-down:
+    {{container_cli}} compose -f ../compose.yml stop postgres
+
 # Run database migrations without starting the server
 migrate:
     go run ./cmd/migrate

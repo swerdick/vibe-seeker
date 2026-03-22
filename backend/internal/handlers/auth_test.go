@@ -10,6 +10,7 @@ import (
 
 	"github.com/pseudo/vibe-seeker/backend/internal/auth"
 	"github.com/pseudo/vibe-seeker/backend/internal/middleware"
+	"github.com/pseudo/vibe-seeker/backend/internal/spotify"
 )
 
 // mockUserStore implements UserUpserter for tests.
@@ -29,7 +30,7 @@ func (m *mockUserStore) UpsertUser(_ context.Context, id, displayName, _, _ stri
 
 func newTestHandler(t *testing.T) *AuthHandler {
 	t.Helper()
-	spotify := auth.NewSpotifyClient("client-id", "client-secret", "http://localhost:8080/api/auth/callback")
+	spotify := spotify.NewClient("client-id", "client-secret", "http://localhost:8080/api/auth/callback")
 	h, err := NewAuthHandler(spotify, &mockUserStore{}, "jwt-secret", "http://localhost:5173", false)
 	if err != nil {
 		t.Fatalf("NewAuthHandler: %v", err)
@@ -291,7 +292,7 @@ func newTestHandlerWithMockSpotify(t *testing.T) (*AuthHandler, *mockUserStore, 
 		}
 	}))
 
-	spotify := auth.NewSpotifyClient("client-id", "client-secret", "http://localhost:5173/api/auth/callback")
+	spotify := spotify.NewClient("client-id", "client-secret", "http://localhost:5173/api/auth/callback")
 	spotify.TokenURL = mock.URL + "/api/token"
 	spotify.MeURL = mock.URL + "/v1/me"
 	spotify.HTTPClient = mock.Client()
@@ -445,7 +446,7 @@ func TestCallback_ExchangeCodeFailure(t *testing.T) {
 	}))
 	defer mock.Close()
 
-	spotify := auth.NewSpotifyClient("client-id", "client-secret", "http://localhost:5173/api/auth/callback")
+	spotify := spotify.NewClient("client-id", "client-secret", "http://localhost:5173/api/auth/callback")
 	spotify.TokenURL = mock.URL + "/api/token"
 	spotify.HTTPClient = mock.Client()
 	h, err := NewAuthHandler(spotify, &mockUserStore{}, "jwt-secret", "http://localhost:5173", false)

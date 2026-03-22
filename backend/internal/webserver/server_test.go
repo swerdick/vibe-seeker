@@ -126,3 +126,34 @@ func TestNew_PreflightRequest(t *testing.T) {
 		t.Errorf("expected status 204 for preflight, got %d", res.StatusCode)
 	}
 }
+
+func TestNew_TasteRoutesRequireAuth(t *testing.T) {
+	cfg := configuration.Config{
+		AppName:    "test-app",
+		Port:       0,
+		CORSOrigin: "http://localhost:5173",
+	}
+
+	server, err := New(cfg, &pgxpool.Pool{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	tests := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodPost, "/api/taste/sync"},
+		{http.MethodGet, "/api/taste"},
+	}
+
+	for _, tt := range tests {
+		req := httptest.NewRequest(tt.method, tt.path, nil)
+		rec := httptest.NewRecorder()
+		server.Handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("%s %s: expected 401, got %d", tt.method, tt.path, rec.Code)
+		}
+	}
+}

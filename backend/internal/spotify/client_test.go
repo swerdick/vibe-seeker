@@ -1,6 +1,7 @@
-package auth
+package spotify
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -9,7 +10,7 @@ import (
 )
 
 func TestAuthorizeURL_ContainsRequiredParams(t *testing.T) {
-	c := NewSpotifyClient("my-client-id", "my-secret", "http://localhost:8080/callback")
+	c := NewClient("my-client-id", "my-secret", "http://localhost:8080/callback")
 
 	raw := c.AuthorizeURL("test-state")
 
@@ -72,10 +73,10 @@ func TestExchangeCode_Success(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := NewSpotifyClient("client-id", "client-secret", "http://localhost:8080/callback")
+	c := NewClient("client-id", "client-secret", "http://localhost:8080/callback")
 	c.TokenURL = server.URL
 
-	tokenResp, err := c.ExchangeCode("test-code")
+	tokenResp, err := c.ExchangeCode(context.Background(),"test-code")
 	if err != nil {
 		t.Fatalf("ExchangeCode failed: %v", err)
 	}
@@ -92,15 +93,15 @@ func TestExchangeCode_Success(t *testing.T) {
 }
 
 func TestExchangeCode_NonOKStatus(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 	}))
 	defer server.Close()
 
-	c := NewSpotifyClient("client-id", "client-secret", "http://localhost:8080/callback")
+	c := NewClient("client-id", "client-secret", "http://localhost:8080/callback")
 	c.TokenURL = server.URL
 
-	_, err := c.ExchangeCode("bad-code")
+	_, err := c.ExchangeCode(context.Background(),"bad-code")
 	if err == nil {
 		t.Fatal("expected error for non-OK status")
 	}
@@ -124,10 +125,10 @@ func TestFetchProfile_Success(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := NewSpotifyClient("client-id", "client-secret", "http://localhost:8080/callback")
+	c := NewClient("client-id", "client-secret", "http://localhost:8080/callback")
 	c.MeURL = server.URL
 
-	profile, err := c.FetchProfile("mock-token")
+	profile, err := c.FetchProfile(context.Background(),"mock-token")
 	if err != nil {
 		t.Fatalf("FetchProfile failed: %v", err)
 	}
@@ -142,73 +143,16 @@ func TestFetchProfile_Success(t *testing.T) {
 }
 
 func TestFetchProfile_NonOKStatus(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 	}))
 	defer server.Close()
 
-	c := NewSpotifyClient("client-id", "client-secret", "http://localhost:8080/callback")
+	c := NewClient("client-id", "client-secret", "http://localhost:8080/callback")
 	c.MeURL = server.URL
 
-	_, err := c.FetchProfile("bad-token")
+	_, err := c.FetchProfile(context.Background(),"bad-token")
 	if err == nil {
 		t.Fatal("expected error for non-OK status")
-	}
-}
-
-// TestFullOAuthFlow tests the complete code exchange → profile fetch → JWT creation chain.
-func TestFullOAuthFlow(t *testing.T) {
-	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{
-			"access_token":  "mock-access-token",
-			"refresh_token": "mock-refresh-token",
-			"expires_in":    3600,
-		})
-	}))
-	defer tokenServer.Close()
-
-	meServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer mock-access-token" {
-			t.Errorf("me endpoint: expected Bearer mock-access-token, got %q", r.Header.Get("Authorization"))
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]string{
-			"id":           "spotify-user-1",
-			"display_name": "Test User",
-		})
-	}))
-	defer meServer.Close()
-
-	c := NewSpotifyClient("client-id", "client-secret", "http://localhost:8080/callback")
-	c.TokenURL = tokenServer.URL
-	c.MeURL = meServer.URL
-
-	tokenResp, err := c.ExchangeCode("auth-code")
-	if err != nil {
-		t.Fatalf("ExchangeCode failed: %v", err)
-	}
-
-	profile, err := c.FetchProfile(tokenResp.AccessToken)
-	if err != nil {
-		t.Fatalf("FetchProfile failed: %v", err)
-	}
-
-	token, err := CreateToken("jwt-secret", profile.ID, profile.DisplayName)
-	if err != nil {
-		t.Fatalf("CreateToken failed: %v", err)
-	}
-
-	claims, err := ParseToken("jwt-secret", token)
-	if err != nil {
-		t.Fatalf("ParseToken failed: %v", err)
-	}
-
-	if claims.SpotifyID != "spotify-user-1" {
-		t.Errorf("SpotifyID = %q, want spotify-user-1", claims.SpotifyID)
-	}
-
-	if claims.DisplayName != "Test User" {
-		t.Errorf("DisplayName = %q, want Test User", claims.DisplayName)
 	}
 }

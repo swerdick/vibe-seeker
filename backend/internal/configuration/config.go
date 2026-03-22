@@ -20,6 +20,7 @@ type Config struct {
 	JWTSecret           string
 	FrontendURL         string
 	DatabaseURL         string
+	LastFMAPIKey        string
 	SecureCookie        bool
 }
 
@@ -37,6 +38,7 @@ func NewConfig() Config {
 		JWTSecret:           readEnvironmentVariable("JWT_SECRET", ""),
 		FrontendURL:         readEnvironmentVariable("FRONTEND_URL", "http://localhost:5173"),
 		DatabaseURL:         readEnvironmentVariable("DATABASE_URL", "postgres://vibe_seeker:vibe_seeker@localhost:5432/vibe_seeker?sslmode=disable"),
+		LastFMAPIKey:        readEnvironmentVariable("LASTFM_API_KEY", ""),
 		SecureCookie:        readEnvironmentVariable("ENVIRONMENT", "local") != "local",
 	}
 }
