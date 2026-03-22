@@ -104,17 +104,20 @@ func (c *Client) SearchVenues(ctx context.Context, opts VenueSearchOptions) ([]V
 		if err != nil {
 			return nil, fmt.Errorf("sending request: %w", err)
 		}
-		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode == http.StatusTooManyRequests {
+			_ = resp.Body.Close()
 			return nil, ErrRateLimited
 		}
 		if resp.StatusCode != http.StatusOK {
+			_ = resp.Body.Close()
 			return nil, fmt.Errorf("ticketmaster venues endpoint returned %d", resp.StatusCode)
 		}
 
 		var result venueSearchResponse
-		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		err = json.NewDecoder(resp.Body).Decode(&result)
+		_ = resp.Body.Close()
+		if err != nil {
 			return nil, fmt.Errorf("decoding response: %w", err)
 		}
 
