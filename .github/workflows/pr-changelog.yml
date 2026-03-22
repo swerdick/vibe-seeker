@@ -25,9 +25,11 @@ jobs:
         run: |
           BASE_SHA="${{ github.event.pull_request.base.sha }}"
           HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          REPO_URL="${{ github.server_url }}/${{ github.repository }}"
 
           # Collect commits in the PR range (oldest first for chronological changelog)
-          COMMITS=$(git log --reverse --pretty=format:"%s" "${BASE_SHA}..${HEAD_SHA}")
+          # Format: short-hash<TAB>subject
+          COMMITS=$(git log --reverse --pretty=format:"%h%x09%s" "${BASE_SHA}..${HEAD_SHA}")
 
           if [ -z "$COMMITS" ]; then
             echo "No commits found in range, skipping."
@@ -55,8 +57,10 @@ jobs:
           declare -A GROUPED
           UNGROUPED=""
 
-          while IFS= read -r MSG; do
+          while IFS=$'\t' read -r HASH MSG; do
             [ -z "$MSG" ] && continue
+
+            LINK="[\`${HASH}\`](${REPO_URL}/commit/${HASH})"
 
             # Match conventional commit: type(scope): description  OR  type: description
             if [[ "$MSG" =~ ^([a-z]+)(\(.+\))?!?:\ (.+)$ ]]; then
@@ -66,9 +70,9 @@ jobs:
 
               # Format with scope if present
               if [ -n "$SCOPE" ]; then
-                ENTRY="- **${SCOPE}**: ${DESC}"
+                ENTRY="- **${SCOPE}**: ${DESC} ${LINK}"
               else
-                ENTRY="- ${DESC}"
+                ENTRY="- ${DESC} ${LINK}"
               fi
 
               # Append to the type's group
@@ -78,7 +82,7 @@ jobs:
                 UNGROUPED="${UNGROUPED}${ENTRY}\n"
               fi
             else
-              UNGROUPED="${UNGROUPED}- ${MSG}\n"
+              UNGROUPED="${UNGROUPED}- ${MSG} ${LINK}\n"
             fi
           done <<< "$COMMITS"
 
@@ -98,13 +102,14 @@ jobs:
           fi
 
           # Check for breaking changes (commits with ! before the colon)
-          BREAKING=$(git log --reverse --pretty=format:"%s" "${BASE_SHA}..${HEAD_SHA}" | grep -E "^[a-z]+(\(.+\))?!:" || true)
+          BREAKING=$(git log --reverse --pretty=format:"%h%x09%s" "${BASE_SHA}..${HEAD_SHA}" | grep -E $'^[^\t]+\t[a-z]+(\(.+\))?!:' || true)
           if [ -n "$BREAKING" ]; then
-            BODY="## Breaking Changes\n\n"
-            while IFS= read -r MSG; do
-              BODY+="- ${MSG}\n"
+            BREAKING_SECTION="## Breaking Changes\n\n"
+            while IFS=$'\t' read -r HASH MSG; do
+              LINK="[\`${HASH}\`](${REPO_URL}/commit/${HASH})"
+              BREAKING_SECTION+="- ${MSG} ${LINK}\n"
             done <<< "$BREAKING"
-            BODY+="\n${BODY}"
+            BODY="${BREAKING_SECTION}\n${BODY}"
           fi
 
           # Preserve any manually written content above a marker, or replace entirely
