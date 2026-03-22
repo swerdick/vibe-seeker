@@ -5,7 +5,7 @@
 #   gh label create frontend --color 1D76DB
 #   gh label create ci --color FBCA04
 #   gh label create docs --color 0075CA
-#   gh label create breaking --color D93F0B
+#   gh label create breaking --color b60205
 
 backend:
   - changed-files:
