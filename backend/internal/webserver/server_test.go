@@ -127,7 +127,7 @@ func TestNew_PreflightRequest(t *testing.T) {
 	}
 }
 
-func TestNew_VibeRoutesRequireAuth(t *testing.T) {
+func TestNew_ProtectedRoutesRequireAuth(t *testing.T) {
 	cfg := configuration.Config{
 		AppName:    "test-app",
 		Port:       0,
@@ -145,6 +145,8 @@ func TestNew_VibeRoutesRequireAuth(t *testing.T) {
 	}{
 		{http.MethodPost, "/api/vibe/sync"},
 		{http.MethodGet, "/api/vibe"},
+		{http.MethodPost, "/api/venues/sync"},
+		{http.MethodGet, "/api/venues"},
 	}
 
 	for _, tt := range tests {
