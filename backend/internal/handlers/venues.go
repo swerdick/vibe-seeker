@@ -159,7 +159,13 @@ func (h *VenueHandler) SyncVenues(w http.ResponseWriter, r *http.Request) {
 		queue = queue[1:]
 
 		log.Info("fetching events", "venue", sv.Name, "processed", processed, "remaining", len(queue), "delay", delay)
-		time.Sleep(delay)
+		select {
+		case <-syncCtx.Done():
+			log.Error("event fetch timed out during delay", "processed", processed, "remaining", len(queue))
+			queue = nil // break outer loop
+			continue
+		case <-time.After(delay):
+		}
 		tmEvents, err := h.Ticketmaster.SearchEvents(syncCtx, ticketmaster.EventSearchOptions{
 			VenueID:       sv.TMID,
 			StartDateTime: now,
@@ -187,7 +193,15 @@ func (h *VenueHandler) SyncVenues(w http.ResponseWriter, r *http.Request) {
 
 		for _, ev := range tmEvents {
 			showID := "tm_" + ev.ID
-			showDate, _ := time.Parse(time.RFC3339, ev.Dates.Start.DateTime)
+			showDate, err := time.Parse(time.RFC3339, ev.Dates.Start.DateTime)
+			if err != nil {
+				// Try localDate as fallback.
+				showDate, err = time.Parse("2006-01-02", ev.Dates.Start.LocalDate)
+				if err != nil {
+					log.Error("skipping event with unparseable date", "event", ev.Name, "dateTime", ev.Dates.Start.DateTime)
+					continue
+				}
+			}
 
 			var priceMin, priceMax float64
 			if len(ev.PriceRanges) > 0 {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 )
 
@@ -81,14 +82,20 @@ func (c *Client) SearchVenues(ctx context.Context, opts VenueSearchOptions) ([]V
 		if unit == "" {
 			unit = "miles"
 		}
-		params := fmt.Sprintf("%s/venues.json?apikey=%s&size=%d&page=%d&locale=*",
-			c.BaseURL, c.APIKey, opts.Size, page)
-		if opts.GeoPoint != "" {
-			params += "&geoPoint=" + opts.GeoPoint + "&radius=" + opts.Radius + "&unit=" + unit
+		params := url.Values{
+			"apikey": {c.APIKey},
+			"size":   {fmt.Sprintf("%d", opts.Size)},
+			"page":   {fmt.Sprintf("%d", page)},
+			"locale": {"*"},
 		}
-		url := params
+		if opts.GeoPoint != "" {
+			params.Set("geoPoint", opts.GeoPoint)
+			params.Set("radius", opts.Radius)
+			params.Set("unit", unit)
+		}
+		reqURL := fmt.Sprintf("%s/venues.json?%s", c.BaseURL, params.Encode())
 
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 		if err != nil {
 			return nil, fmt.Errorf("creating request: %w", err)
 		}
@@ -97,19 +104,18 @@ func (c *Client) SearchVenues(ctx context.Context, opts VenueSearchOptions) ([]V
 		if err != nil {
 			return nil, fmt.Errorf("sending request: %w", err)
 		}
-
-		var result venueSearchResponse
-		err = json.NewDecoder(resp.Body).Decode(&result)
-		_ = resp.Body.Close()
-		if err != nil {
-			return nil, fmt.Errorf("decoding response: %w", err)
-		}
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode == http.StatusTooManyRequests {
 			return nil, ErrRateLimited
 		}
 		if resp.StatusCode != http.StatusOK {
 			return nil, fmt.Errorf("ticketmaster venues endpoint returned %d", resp.StatusCode)
+		}
+
+		var result venueSearchResponse
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			return nil, fmt.Errorf("decoding response: %w", err)
 		}
 
 		all = append(all, result.Embedded.Venues...)

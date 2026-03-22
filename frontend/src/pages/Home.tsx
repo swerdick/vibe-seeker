@@ -79,9 +79,17 @@ export default function Home() {
         if (!res.ok) throw new Error("venue sync failed");
         return res.json();
       })
-      .then((data: { venues_count?: number; count?: number }) => {
-        setVenueCount(data.venues_count ?? data.count ?? 0);
-      })
+      .then(
+        (data: {
+          venues_count?: number;
+          count?: number;
+          synced?: boolean;
+        }) => {
+          if (typeof data.venues_count === "number") {
+            setVenueCount(data.venues_count);
+          }
+        },
+      )
       .catch(() => {
         setVenueError("Failed to sync venues from Ticketmaster.");
       })

@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pseudo/vibe-seeker/backend/internal/migrations"
@@ -210,4 +211,156 @@ func TestIntegration_UpsertGenres_Replaces(t *testing.T) {
 		_, _ = pool.Exec(ctx, `DELETE FROM user_genres WHERE user_id = 'test-replace-1'`)
 		_, _ = pool.Exec(ctx, `DELETE FROM users WHERE id = 'test-replace-1'`)
 	})
+}
+
+// --- Venue Store Integration Tests ---
+
+func testVenueStore(t *testing.T) (*VenueStore, *pgxpool.Pool) {
+	t.Helper()
+	pool := testPool(t)
+	s, err := NewVenueStore(pool)
+	if err != nil {
+		t.Fatalf("NewVenueStore: %v", err)
+	}
+	return s, pool
+}
+
+func TestIntegration_UpsertVenues(t *testing.T) {
+	s, pool := testVenueStore(t)
+	ctx := context.Background()
+
+	venues := []Venue{
+		{ID: "tm_test1", Name: "Test Venue", Latitude: 40.7, Longitude: -74.0, Address: "123 Test St", City: "New York", State: "NY", DataSource: "ticketmaster", TMID: "test1"},
+	}
+	if err := s.UpsertVenues(ctx, venues); err != nil {
+		t.Fatalf("UpsertVenues: %v", err)
+	}
+
+	// Upsert again with updated name.
+	venues[0].Name = "Updated Venue"
+	if err := s.UpsertVenues(ctx, venues); err != nil {
+		t.Fatalf("second UpsertVenues: %v", err)
+	}
+
+	got, err := s.GetVenues(ctx)
+	if err != nil {
+		t.Fatalf("GetVenues: %v", err)
+	}
+
+	var found bool
+	for _, v := range got {
+		if v.ID == "tm_test1" {
+			found = true
+			if v.Name != "Updated Venue" {
+				t.Errorf("name = %q, want Updated Venue", v.Name)
+			}
+		}
+	}
+	if !found {
+		t.Error("test venue not found in GetVenues results")
+	}
+
+	t.Cleanup(func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM venues WHERE id = 'tm_test1'`)
+	})
+}
+
+func TestIntegration_UpsertShows(t *testing.T) {
+	s, pool := testVenueStore(t)
+	ctx := context.Background()
+
+	// Create venue first.
+	_ = s.UpsertVenues(ctx, []Venue{
+		{ID: "tm_showtest", Name: "Show Test Venue", Latitude: 40.7, Longitude: -74.0, DataSource: "ticketmaster", TMID: "showtest"},
+	})
+
+	shows := []Show{
+		{ID: "tm_show1", Name: "Test Show", VenueID: "tm_showtest", ShowDate: time.Now().Add(24 * time.Hour), Status: "onsale", DataSource: "ticketmaster"},
+		{ID: "tm_show2", Name: "Test Show 2", VenueID: "tm_showtest", ShowDate: time.Now().Add(48 * time.Hour), Status: "onsale", DataSource: "ticketmaster"},
+	}
+	if err := s.UpsertShows(ctx, shows); err != nil {
+		t.Fatalf("UpsertShows: %v", err)
+	}
+
+	// Verify shows_tracked was updated.
+	venues, _ := s.GetVenues(ctx)
+	for _, v := range venues {
+		if v.ID == "tm_showtest" && v.ShowsTracked != 2 {
+			t.Errorf("shows_tracked = %d, want 2", v.ShowsTracked)
+		}
+	}
+
+	t.Cleanup(func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM shows WHERE venue_id = 'tm_showtest'`)
+		_, _ = pool.Exec(ctx, `DELETE FROM venues WHERE id = 'tm_showtest'`)
+	})
+}
+
+func TestIntegration_UpsertArtists(t *testing.T) {
+	s, pool := testVenueStore(t)
+	ctx := context.Background()
+
+	artists := []Artist{
+		{ID: "test-artist", Name: "Test Artist", ImageURL: "https://example.com/img.jpg"},
+	}
+	if err := s.UpsertArtists(ctx, artists); err != nil {
+		t.Fatalf("UpsertArtists: %v", err)
+	}
+
+	// Upsert again — should not error.
+	if err := s.UpsertArtists(ctx, artists); err != nil {
+		t.Fatalf("second UpsertArtists: %v", err)
+	}
+
+	t.Cleanup(func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM artists WHERE id = 'test-artist'`)
+	})
+}
+
+func TestIntegration_GetVenueFetchedAt(t *testing.T) {
+	s, pool := testVenueStore(t)
+	ctx := context.Background()
+
+	// Use a unique data_source to avoid interference from other tests/syncs.
+	source := "test_fetchedat"
+
+	got, err := s.GetVenueFetchedAt(ctx, source)
+	if err != nil {
+		t.Fatalf("GetVenueFetchedAt: %v", err)
+	}
+	if got != nil {
+		t.Errorf("expected nil for unknown data source, got %v", got)
+	}
+
+	// Add a venue with our test source and check again.
+	_ = s.UpsertVenues(ctx, []Venue{
+		{ID: "tm_fetch_test", Name: "Fetch Test", Latitude: 40.7, Longitude: -74.0, DataSource: source, TMID: "fetch_test"},
+	})
+
+	got, err = s.GetVenueFetchedAt(ctx, source)
+	if err != nil {
+		t.Fatalf("GetVenueFetchedAt after insert: %v", err)
+	}
+	if got == nil {
+		t.Fatal("expected non-nil fetched_at after insert")
+	}
+	if time.Since(*got) > 10*time.Second {
+		t.Errorf("fetched_at too old: %v", got)
+	}
+
+	t.Cleanup(func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM venues WHERE id = 'tm_fetch_test'`)
+	})
+}
+
+func TestIntegration_GetVenues_Empty(t *testing.T) {
+	s, _ := testVenueStore(t)
+	ctx := context.Background()
+
+	got, err := s.GetVenues(ctx)
+	if err != nil {
+		t.Fatalf("GetVenues: %v", err)
+	}
+	// May have venues from other tests, just verify no error.
+	_ = got
 }

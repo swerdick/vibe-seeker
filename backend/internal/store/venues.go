@@ -109,11 +109,15 @@ func (s *VenueStore) UpsertVenues(ctx context.Context, venues []Venue) error {
 				latitude = EXCLUDED.latitude,
 				longitude = EXCLUDED.longitude,
 				address = EXCLUDED.address,
+				city = EXCLUDED.city,
+				state = EXCLUDED.state,
 				image_url = EXCLUDED.image_url,
 				box_office_info = EXCLUDED.box_office_info,
 				parking_detail = EXCLUDED.parking_detail,
 				general_info = EXCLUDED.general_info,
 				ada = EXCLUDED.ada,
+				data_source = EXCLUDED.data_source,
+				tm_id = EXCLUDED.tm_id,
 				fetched_at = NOW()
 		`, v.ID, v.Name, v.Latitude, v.Longitude, v.Address, v.City, v.State, v.ImageURL,
 			v.BoxOfficeInfo, v.ParkingDetail, v.GeneralInfo, v.Ada, v.DataSource, v.TMID)
@@ -135,9 +139,13 @@ func (s *VenueStore) UpsertShows(ctx context.Context, shows []Show) error {
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
 			ON CONFLICT (id) DO UPDATE SET
 				name = EXCLUDED.name,
+				venue_id = EXCLUDED.venue_id,
+				show_date = EXCLUDED.show_date,
+				ticket_url = EXCLUDED.ticket_url,
 				price_min = EXCLUDED.price_min,
 				price_max = EXCLUDED.price_max,
 				status = EXCLUDED.status,
+				data_source = EXCLUDED.data_source,
 				fetched_at = NOW()
 		`, sh.ID, sh.Name, sh.VenueID, sh.ShowDate, sh.TicketURL, sh.PriceMin, sh.PriceMax, sh.Status, sh.DataSource)
 	}
@@ -219,17 +227,17 @@ func (s *VenueStore) UpsertShowClassifications(ctx context.Context, classificati
 // GetVenueFetchedAt returns the most recent fetched_at time for venues from
 // the given data source. Returns nil if no venues exist for that source.
 func (s *VenueStore) GetVenueFetchedAt(ctx context.Context, dataSource string) (*time.Time, error) {
-	var t time.Time
+	var t *time.Time
 	err := s.pool.QueryRow(ctx,
 		`SELECT MAX(fetched_at) FROM venues WHERE data_source = $1`, dataSource,
 	).Scan(&t)
 	if err != nil {
-		return nil, nil //nolint:nilerr // no rows is expected
+		return nil, fmt.Errorf("querying venue fetched_at: %w", err)
 	}
-	if t.IsZero() {
+	if t == nil || t.IsZero() {
 		return nil, nil
 	}
-	return &t, nil
+	return t, nil
 }
 
 // GetVenues returns all venues.

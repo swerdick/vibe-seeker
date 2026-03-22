@@ -3,6 +3,7 @@ package ticketmaster
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -82,7 +83,7 @@ func TestSearchEvents_Success(t *testing.T) {
 	}
 }
 
-func TestSearchEvents_NonOKStatus(t *testing.T) {
+func TestSearchEvents_RateLimited(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusTooManyRequests)
 	}))
@@ -92,8 +93,26 @@ func TestSearchEvents_NonOKStatus(t *testing.T) {
 	c.BaseURL = server.URL
 
 	_, err := c.SearchEvents(context.Background(), EventSearchOptions{VenueID: "v1"})
+	if !errors.Is(err, ErrRateLimited) {
+		t.Errorf("expected ErrRateLimited, got %v", err)
+	}
+}
+
+func TestSearchEvents_NonOKStatus(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	c := NewClient("test-key")
+	c.BaseURL = server.URL
+
+	_, err := c.SearchEvents(context.Background(), EventSearchOptions{VenueID: "v1"})
 	if err == nil {
 		t.Fatal("expected error for non-OK status")
+	}
+	if errors.Is(err, ErrRateLimited) {
+		t.Error("500 should not be ErrRateLimited")
 	}
 }
 

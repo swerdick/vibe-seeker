@@ -239,3 +239,54 @@ func TestGetVenues_Unauthorized(t *testing.T) {
 		t.Errorf("expected 401, got %d", rec.Code)
 	}
 }
+
+func TestMapVenues_FiltersNonUS(t *testing.T) {
+	tmVenues := []ticketmaster.Venue{
+		{
+			ID:       "v1",
+			Name:     "Bowery Ballroom",
+			Location: ticketmaster.VenueLocation{Latitude: "40.7204", Longitude: "-73.9934"},
+			City:     ticketmaster.VenueCity{Name: "New York"},
+			State:    ticketmaster.VenueState{StateCode: "NY"},
+			Country:  ticketmaster.VenueCountry{CountryCode: "US"},
+		},
+		{
+			ID:       "v2",
+			Name:     "Spanish Rec Center",
+			Location: ticketmaster.VenueLocation{Latitude: "40.7128", Longitude: "-74.0060"},
+			City:     ticketmaster.VenueCity{Name: "Donostia"},
+			State:    ticketmaster.VenueState{StateCode: ""},
+			Country:  ticketmaster.VenueCountry{CountryCode: "ES"},
+		},
+		{
+			ID:       "v3",
+			Name:     "No Coordinates",
+			Location: ticketmaster.VenueLocation{Latitude: "0", Longitude: "0"},
+			Country:  ticketmaster.VenueCountry{CountryCode: "US"},
+		},
+	}
+
+	result := mapVenues(tmVenues)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 venue after filtering, got %d", len(result))
+	}
+	if result[0].Name != "Bowery Ballroom" {
+		t.Errorf("expected Bowery Ballroom, got %q", result[0].Name)
+	}
+}
+
+func TestMapVenues_EmptyCountryAllowed(t *testing.T) {
+	tmVenues := []ticketmaster.Venue{
+		{
+			ID:       "v1",
+			Name:     "Unknown Country Venue",
+			Location: ticketmaster.VenueLocation{Latitude: "40.7", Longitude: "-74.0"},
+			Country:  ticketmaster.VenueCountry{CountryCode: ""},
+		},
+	}
+
+	result := mapVenues(tmVenues)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 venue (empty country allowed), got %d", len(result))
+	}
+}
