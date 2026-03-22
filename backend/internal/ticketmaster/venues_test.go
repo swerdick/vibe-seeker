@@ -3,6 +3,7 @@ package ticketmaster
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -88,9 +89,24 @@ func TestSearchVenues_Pagination(t *testing.T) {
 	}
 }
 
-func TestSearchVenues_NonOKStatus(t *testing.T) {
+func TestSearchVenues_RateLimited(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+
+	c := NewClient("test-key")
+	c.BaseURL = server.URL
+
+	_, err := c.SearchVenues(context.Background(), VenueSearchOptions{GeoPoint: "40.7128,-74.0060", Radius: "15"})
+	if !errors.Is(err, ErrRateLimited) {
+		t.Errorf("expected ErrRateLimited, got %v", err)
+	}
+}
+
+func TestSearchVenues_NonOKStatus(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer server.Close()
 

@@ -120,19 +120,18 @@ func (c *Client) SearchEvents(ctx context.Context, opts EventSearchOptions) ([]E
 		if err != nil {
 			return nil, fmt.Errorf("sending request: %w", err)
 		}
-
-		var result eventSearchResponse
-		err = json.NewDecoder(resp.Body).Decode(&result)
-		_ = resp.Body.Close()
-		if err != nil {
-			return nil, fmt.Errorf("decoding response: %w", err)
-		}
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode == http.StatusTooManyRequests {
 			return nil, ErrRateLimited
 		}
 		if resp.StatusCode != http.StatusOK {
 			return nil, fmt.Errorf("ticketmaster events endpoint returned %d", resp.StatusCode)
+		}
+
+		var result eventSearchResponse
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			return nil, fmt.Errorf("decoding response: %w", err)
 		}
 
 		all = append(all, result.Embedded.Events...)
