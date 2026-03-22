@@ -178,4 +178,70 @@ describe("Home", () => {
 
     expect(screen.queryByText("Your Top Genres")).not.toBeInTheDocument();
   });
+
+  it("renders Sync Venues button after auth", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    fetchMock.mockResolvedValueOnce(meResponse());
+    fetchMock.mockResolvedValueOnce(vibeResponse());
+
+    renderHome();
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /sync venues/i }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("calls venue sync endpoint and shows count", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    fetchMock.mockResolvedValueOnce(meResponse());
+    fetchMock.mockResolvedValueOnce(vibeResponse());
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ synced: true, venues_count: 42, shows_count: 100 }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    renderHome();
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /sync venues/i }),
+      ).toBeInTheDocument();
+    });
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /sync venues/i }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/42 venues loaded/i)).toBeInTheDocument();
+    });
+  });
+
+  it("shows error when venue sync fails", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    fetchMock.mockResolvedValueOnce(meResponse());
+    fetchMock.mockResolvedValueOnce(vibeResponse());
+    fetchMock.mockResolvedValueOnce(
+      new Response("error", { status: 502 }),
+    );
+
+    renderHome();
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /sync venues/i }),
+      ).toBeInTheDocument();
+    });
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /sync venues/i }),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/failed to sync venues/i),
+      ).toBeInTheDocument();
+    });
+  });
 });
