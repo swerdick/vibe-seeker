@@ -1,0 +1,123 @@
+# .github/workflows/pr-description.yml
+name: PR Description
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  generate-changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Full history for accurate commit range
+
+      - name: Generate changelog from commits
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+
+          # Collect commits in the PR range (oldest first for chronological changelog)
+          COMMITS=$(git log --reverse --pretty=format:"%s" "${BASE_SHA}..${HEAD_SHA}")
+
+          if [ -z "$COMMITS" ]; then
+            echo "No commits found in range, skipping."
+            exit 0
+          fi
+
+          # Group commits by conventional commit type
+          declare -A TYPE_LABELS=(
+            ["feat"]="Features"
+            ["fix"]="Bug Fixes"
+            ["docs"]="Documentation"
+            ["style"]="Style"
+            ["refactor"]="Refactoring"
+            ["perf"]="Performance"
+            ["test"]="Tests"
+            ["build"]="Build"
+            ["ci"]="CI"
+            ["chore"]="Chores"
+            ["revert"]="Reverts"
+          )
+
+          # Order types appear in the changelog (most interesting first)
+          TYPE_ORDER=("feat" "fix" "perf" "refactor" "docs" "test" "build" "ci" "style" "chore" "revert")
+
+          declare -A GROUPED
+          UNGROUPED=""
+
+          while IFS= read -r MSG; do
+            [ -z "$MSG" ] && continue
+
+            # Match conventional commit: type(scope): description  OR  type: description
+            if [[ "$MSG" =~ ^([a-z]+)(\(.+\))?!?:\ (.+)$ ]]; then
+              TYPE="${BASH_REMATCH[1]}"
+              SCOPE="${BASH_REMATCH[2]}"
+              DESC="${BASH_REMATCH[3]}"
+
+              # Format with scope if present
+              if [ -n "$SCOPE" ]; then
+                ENTRY="- **${SCOPE}**: ${DESC}"
+              else
+                ENTRY="- ${DESC}"
+              fi
+
+              # Append to the type's group
+              if [ -n "${TYPE_LABELS[$TYPE]+x}" ]; then
+                GROUPED[$TYPE]="${GROUPED[$TYPE]:-}${ENTRY}\n"
+              else
+                UNGROUPED="${UNGROUPED}${ENTRY}\n"
+              fi
+            else
+              UNGROUPED="${UNGROUPED}- ${MSG}\n"
+            fi
+          done <<< "$COMMITS"
+
+          # Build the changelog body
+          BODY="## Changelog\n\n"
+
+          for TYPE in "${TYPE_ORDER[@]}"; do
+            if [ -n "${GROUPED[$TYPE]+x}" ]; then
+              BODY+="### ${TYPE_LABELS[$TYPE]}\n\n"
+              BODY+="${GROUPED[$TYPE]}\n"
+            fi
+          done
+
+          if [ -n "$UNGROUPED" ]; then
+            BODY+="### Other\n\n"
+            BODY+="${UNGROUPED}\n"
+          fi
+
+          # Check for breaking changes (commits with ! before the colon)
+          BREAKING=$(git log --reverse --pretty=format:"%s" "${BASE_SHA}..${HEAD_SHA}" | grep -E "^[a-z]+(\(.+\))?!:" || true)
+          if [ -n "$BREAKING" ]; then
+            BODY="## Breaking Changes\n\n"
+            while IFS= read -r MSG; do
+              BODY+="- ${MSG}\n"
+            done <<< "$BREAKING"
+            BODY+="\n${BODY}"
+          fi
+
+          # Preserve any manually written content above a marker, or replace entirely
+          EXISTING=$(gh pr view "$PR_NUMBER" --json body --jq '.body // ""')
+          MARKER="<!-- auto-changelog -->"
+
+          if echo "$EXISTING" | grep -q "$MARKER"; then
+            # Replace everything after the marker
+            MANUAL=$(echo "$EXISTING" | sed "/${MARKER}/,\$d")
+            FINAL="${MANUAL}${MARKER}\n\n$(echo -e "$BODY")"
+          else
+            FINAL="${MARKER}\n\n$(echo -e "$BODY")"
+          fi
+
+          # Update the PR description
+          echo -e "$FINAL" | gh pr edit "$PR_NUMBER" --body-file -
