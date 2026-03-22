@@ -13,6 +13,9 @@ export default function Home() {
   const [genres, setGenres] = useState<Record<string, number> | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [vibeError, setVibeError] = useState<string | null>(null);
+  const [venuesSyncing, setVenuesSyncing] = useState(false);
+  const [venueCount, setVenueCount] = useState<number | null>(null);
+  const [venueError, setVenueError] = useState<string | null>(null);
 
   const fetchVibe = useCallback(() => {
     fetch("/api/vibe", { credentials: "include" })
@@ -68,6 +71,25 @@ export default function Home() {
       });
   };
 
+  const handleVenueSync = () => {
+    setVenuesSyncing(true);
+    setVenueError(null);
+    fetch("/api/venues/sync", { method: "POST", credentials: "include" })
+      .then((res) => {
+        if (!res.ok) throw new Error("venue sync failed");
+        return res.json();
+      })
+      .then((data: { venues_count?: number; count?: number }) => {
+        setVenueCount(data.venues_count ?? data.count ?? 0);
+      })
+      .catch(() => {
+        setVenueError("Failed to sync venues from Ticketmaster.");
+      })
+      .finally(() => {
+        setVenuesSyncing(false);
+      });
+  };
+
   const handleLogout = () => {
     fetch("/api/auth/logout", {
       method: "POST",
@@ -112,6 +134,17 @@ export default function Home() {
               ))}
           </ul>
         </div>
+      )}
+      <button
+        className="button"
+        onClick={handleVenueSync}
+        disabled={venuesSyncing}
+      >
+        {venuesSyncing ? "Syncing..." : "Sync Venues"}
+      </button>
+      {venueError && <p className="error">{venueError}</p>}
+      {venueCount !== null && (
+        <p>{venueCount} venues loaded from Ticketmaster</p>
       )}
       <button onClick={handleLogout}>Log out</button>
     </div>
