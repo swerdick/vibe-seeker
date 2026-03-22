@@ -1,0 +1,28 @@
+# .github/labeler.yml
+# Path-based PR labeling for actions/labeler@v5
+# Labels must exist on the repo — create them once via:
+#   gh label create backend --color 0E8A16
+#   gh label create frontend --color 1D76DB
+#   gh label create ci --color FBCA04
+#   gh label create docs --color 0075CA
+#   gh label create breaking --color D93F0B
+
+backend:
+  - changed-files:
+      - any-glob-to-any-file: "backend/**"
+
+frontend:
+  - changed-files:
+      - any-glob-to-any-file: "frontend/**"
+
+ci:
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/**"
+          - "**/Containerfile"
+
+docs:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/*.md"
+          - "docs/**"
