@@ -5,6 +5,38 @@ import (
 	"log/slog"
 	"os"
 	"strconv"
+	"time"
+)
+
+// Data source identifiers.
+const (
+	DataSourceTicketmaster = "ticketmaster"
+	IDPrefixTicketmaster   = "tm_"
+)
+
+// Cache and sync TTLs.
+const (
+	VenueCacheTTL     = 6 * time.Hour
+	ArtistTagCacheTTL = 7 * 24 * time.Hour
+)
+
+// Rate limits.
+const (
+	TicketmasterRateLimit = 200 * time.Millisecond // 5 req/sec
+	LastFMRateLimit       = 200 * time.Millisecond // 5 req/sec
+)
+
+// Sync timeouts.
+const (
+	VenueSyncTimeout = 10 * time.Minute
+	VibeSyncTimeout  = 1 * time.Minute
+)
+
+// Auth durations.
+const (
+	TokenRefreshThreshold  = 60 // seconds before expiry to trigger refresh
+	OAuthStateCookieMaxAge = 600
+	SessionCookieMaxAge    = 86400
 )
 
 type Config struct {

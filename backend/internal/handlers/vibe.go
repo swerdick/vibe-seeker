@@ -8,9 +8,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pseudo/vibe-seeker/backend/internal/configuration"
 	"github.com/pseudo/vibe-seeker/backend/internal/lastfm"
 	"github.com/pseudo/vibe-seeker/backend/internal/middleware"
 	"github.com/pseudo/vibe-seeker/backend/internal/observability"
+	"github.com/pseudo/vibe-seeker/backend/internal/ratelimit"
 	"github.com/pseudo/vibe-seeker/backend/internal/spotify"
 	"github.com/pseudo/vibe-seeker/backend/internal/store"
 )
@@ -99,22 +101,22 @@ func (h *VibeHandler) SyncVibe(w http.ResponseWriter, r *http.Request) {
 
 	accessToken, err := h.ensureValidToken(ctx, claims.SpotifyID)
 	if err != nil {
-		observability.Logger(ctx).Error("failed to get valid token", "user", claims.SpotifyID, "error", err)
-		http.Error(w, "failed to authenticate with spotify", http.StatusBadGateway)
+		httpError(w, r, http.StatusBadGateway, "failed to authenticate with spotify",
+			"failed to get valid token", "user", claims.SpotifyID, "error", err)
 		return
 	}
 
 	mediumResp, err := h.Spotify.FetchTopArtists(ctx, accessToken, "medium_term", 50)
 	if err != nil {
-		observability.Logger(ctx).Error("failed to fetch medium-term top artists", "error", err)
-		http.Error(w, "failed to fetch top artists", http.StatusBadGateway)
+		httpError(w, r, http.StatusBadGateway, "failed to fetch top artists",
+			"failed to fetch medium-term top artists", "error", err)
 		return
 	}
 
 	shortResp, err := h.Spotify.FetchTopArtists(ctx, accessToken, "short_term", 50)
 	if err != nil {
-		observability.Logger(ctx).Error("failed to fetch short-term top artists", "error", err)
-		http.Error(w, "failed to fetch top artists", http.StatusBadGateway)
+		httpError(w, r, http.StatusBadGateway, "failed to fetch top artists",
+			"failed to fetch short-term top artists", "error", err)
 		return
 	}
 
@@ -136,14 +138,11 @@ func (h *VibeHandler) SyncVibe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fetch Last.fm tags for each unique artist, using the DB cache first.
-	// Use a standalone timeout so the sync isn't killed by a browser disconnect
-	// but also can't run unbounded.
-	// Rate-limit to 5 req/sec (200ms interval) to stay within Last.fm's limits.
-	tagCtx, tagCancel := context.WithTimeout(context.WithoutCancel(ctx), 1*time.Minute)
+	tagCtx, tagCancel := context.WithTimeout(context.WithoutCancel(ctx), configuration.VibeSyncTimeout)
 	defer tagCancel()
 
-	ticker := time.NewTicker(200 * time.Millisecond)
-	defer ticker.Stop()
+	limiter := ratelimit.NewLimiter(configuration.LastFMRateLimit)
+	defer limiter.Stop()
 
 	artistTags := make(map[string][]lastfm.Tag)
 	cacheHits := 0
@@ -165,7 +164,10 @@ func (h *VibeHandler) SyncVibe(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Cache miss — fetch from Last.fm (rate-limited).
-		<-ticker.C
+		if err := limiter.Wait(tagCtx); err != nil {
+			observability.Logger(ctx).Error("lastfm tag fetch timed out during wait", "error", err)
+			break
+		}
 		tags, err := h.LastFM.FetchArtistTags(tagCtx, name)
 		if err != nil {
 			observability.Logger(ctx).Error("failed to fetch lastfm tags", "artist", name, "error", err)
@@ -186,8 +188,8 @@ func (h *VibeHandler) SyncVibe(w http.ResponseWriter, r *http.Request) {
 	// so we don't want the Last.fm timeout to prevent saving results.
 	dbCtx := context.WithoutCancel(ctx)
 	if err := h.Genres.UpsertGenres(dbCtx, claims.SpotifyID, weights); err != nil {
-		observability.Logger(ctx).Error("failed to persist genre weights", "error", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		httpError(w, r, http.StatusInternalServerError, "internal error",
+			"failed to persist genre weights", "error", err)
 		return
 	}
 
@@ -210,8 +212,8 @@ func (h *VibeHandler) GetVibe(w http.ResponseWriter, r *http.Request) {
 
 	genres, err := h.GenreReader.GetGenres(r.Context(), claims.SpotifyID)
 	if err != nil {
-		observability.Logger(r.Context()).Error("failed to read genre weights", "error", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		httpError(w, r, http.StatusInternalServerError, "internal error",
+			"failed to read genre weights", "error", err)
 		return
 	}
 
@@ -229,8 +231,7 @@ func (h *VibeHandler) ensureValidToken(ctx context.Context, userID string) (stri
 		return "", err
 	}
 
-	// If the token expires within 60 seconds, refresh it.
-	if int64(tokens.TokenExpiry) <= time.Now().Unix()+60 {
+	if int64(tokens.TokenExpiry) <= time.Now().Unix()+configuration.TokenRefreshThreshold {
 		refreshed, err := h.Spotify.RefreshToken(ctx, tokens.RefreshToken)
 		if err != nil {
 			return "", err
