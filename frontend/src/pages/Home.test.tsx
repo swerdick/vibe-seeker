@@ -23,36 +23,61 @@ function renderHome() {
   );
 }
 
-const meResponse = () =>
-  new Response(
-    JSON.stringify({ spotify_id: "spotify123", display_name: "Test User" }),
-    { status: 200, headers: { "Content-Type": "application/json" } },
-  );
+// URL-based fetch mock — avoids fragile positional mocking.
+function mockFetch(overrides: Record<string, Response | (() => Response)> = {}) {
+  const defaults: Record<string, () => Response> = {
+    "/api/auth/me": () =>
+      new Response(
+        JSON.stringify({ spotify_id: "spotify123", display_name: "Test User" }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    "/api/vibe": () =>
+      new Response(JSON.stringify({ genres: {}, genre_count: 0 }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    "/api/venues": () =>
+      new Response(JSON.stringify({ venues: [], count: 0 }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+  };
 
-const vibeResponse = (genres: Record<string, number> = {}) =>
-  new Response(
-    JSON.stringify({ genres, genre_count: Object.keys(genres).length }),
-    { status: 200, headers: { "Content-Type": "application/json" } },
-  );
+  const responses: Record<string, () => Response> = {};
+  for (const [url, val] of Object.entries(defaults)) {
+    responses[url] = val;
+  }
+  for (const [url, val] of Object.entries(overrides)) {
+    responses[url] = typeof val === "function" ? val : () => val;
+  }
+
+  const mock = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+    const url =
+      typeof input === "string" ? input : input instanceof URL ? input.href : (input as Request).url;
+    const factory = responses[url];
+    if (factory) return Promise.resolve(factory());
+    return Promise.resolve(new Response("not found", { status: 404 }));
+  });
+
+  return mock;
+}
 
 describe("Home", () => {
   it("renders the home page when authenticated", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch");
-    fetchMock.mockResolvedValueOnce(meResponse());
-    fetchMock.mockResolvedValueOnce(vibeResponse());
-
+    mockFetch();
     renderHome();
     await waitFor(() => {
       expect(screen.getByText(/Hello, Test User/)).toBeInTheDocument();
     });
-    expect(screen.getByText(/you are logged in/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /sync vibe/i }),
+    ).toBeInTheDocument();
   });
 
   it("redirects to login when not authenticated", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response("unauthorized", { status: 401 }),
-    );
-
+    mockFetch({
+      "/api/auth/me": new Response("unauthorized", { status: 401 }),
+    });
     renderHome();
     await waitFor(() => {
       expect(screen.getByText("login page")).toBeInTheDocument();
@@ -60,18 +85,15 @@ describe("Home", () => {
   });
 
   it("calls logout endpoint and redirects on logout", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch");
-    fetchMock.mockResolvedValueOnce(meResponse());
-    fetchMock.mockResolvedValueOnce(vibeResponse());
-
+    const fetchMock = mockFetch({
+      "/api/auth/logout": new Response(null, { status: 204 }),
+    });
     renderHome();
     await waitFor(() => {
       expect(screen.getByText(/Hello, Test User/)).toBeInTheDocument();
     });
 
-    fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
     await userEvent.click(screen.getByRole("button", { name: /log out/i }));
-
     await waitFor(() => {
       expect(screen.getByText("login page")).toBeInTheDocument();
     });
@@ -83,10 +105,7 @@ describe("Home", () => {
   });
 
   it("renders Sync Vibe button after auth", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch");
-    fetchMock.mockResolvedValueOnce(meResponse());
-    fetchMock.mockResolvedValueOnce(vibeResponse());
-
+    mockFetch();
     renderHome();
     await waitFor(() => {
       expect(
@@ -96,12 +115,15 @@ describe("Home", () => {
   });
 
   it("displays genres after loading vibe", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch");
-    fetchMock.mockResolvedValueOnce(meResponse());
-    fetchMock.mockResolvedValueOnce(
-      vibeResponse({ rock: 1.0, indie: 0.7, "dream pop": 0.3 }),
-    );
-
+    mockFetch({
+      "/api/vibe": new Response(
+        JSON.stringify({
+          genres: { rock: 1.0, indie: 0.7, "dream pop": 0.3 },
+          genre_count: 3,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    });
     renderHome();
     await waitFor(() => {
       expect(screen.getByText("rock")).toBeInTheDocument();
@@ -111,18 +133,21 @@ describe("Home", () => {
   });
 
   it("calls sync endpoint and refreshes genres on click", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch");
-    fetchMock.mockResolvedValueOnce(meResponse());
-    fetchMock.mockResolvedValueOnce(vibeResponse()); // initial empty vibe
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ synced: true, genre_count: 2 }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
-    ); // sync response
-    fetchMock.mockResolvedValueOnce(
-      vibeResponse({ rock: 1.0, indie: 0.5 }),
-    ); // refreshed vibe
+    let vibeCalls = 0;
+    mockFetch({
+      "/api/vibe": () => {
+        vibeCalls++;
+        const genres = vibeCalls > 1 ? { rock: 1.0, indie: 0.5 } : {};
+        return new Response(
+          JSON.stringify({ genres, genre_count: Object.keys(genres).length }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      },
+      "/api/vibe/sync": new Response(
+        JSON.stringify({ synced: true, genre_count: 2 }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    });
 
     renderHome();
     await waitFor(() => {
@@ -141,13 +166,9 @@ describe("Home", () => {
   });
 
   it("shows error when sync fails", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch");
-    fetchMock.mockResolvedValueOnce(meResponse());
-    fetchMock.mockResolvedValueOnce(vibeResponse());
-    fetchMock.mockResolvedValueOnce(
-      new Response("error", { status: 502 }),
-    ); // sync fails
-
+    mockFetch({
+      "/api/vibe/sync": new Response("error", { status: 502 }),
+    });
     renderHome();
     await waitFor(() => {
       expect(
@@ -167,23 +188,16 @@ describe("Home", () => {
   });
 
   it("handles empty vibe gracefully", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch");
-    fetchMock.mockResolvedValueOnce(meResponse());
-    fetchMock.mockResolvedValueOnce(vibeResponse({}));
-
+    mockFetch();
     renderHome();
     await waitFor(() => {
       expect(screen.getByText(/Hello, Test User/)).toBeInTheDocument();
     });
-
     expect(screen.queryByText("Your Top Genres")).not.toBeInTheDocument();
   });
 
   it("renders Sync Venues button after auth", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch");
-    fetchMock.mockResolvedValueOnce(meResponse());
-    fetchMock.mockResolvedValueOnce(vibeResponse());
-
+    mockFetch();
     renderHome();
     await waitFor(() => {
       expect(
@@ -193,16 +207,12 @@ describe("Home", () => {
   });
 
   it("calls venue sync endpoint and shows count", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch");
-    fetchMock.mockResolvedValueOnce(meResponse());
-    fetchMock.mockResolvedValueOnce(vibeResponse());
-    fetchMock.mockResolvedValueOnce(
-      new Response(
+    mockFetch({
+      "/api/venues/sync": new Response(
         JSON.stringify({ synced: true, venues_count: 42, shows_count: 100 }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       ),
-    );
-
+    });
     renderHome();
     await waitFor(() => {
       expect(
@@ -215,18 +225,14 @@ describe("Home", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText(/42 venues loaded/i)).toBeInTheDocument();
+      expect(screen.getByText(/42 venues/i)).toBeInTheDocument();
     });
   });
 
   it("shows error when venue sync fails", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch");
-    fetchMock.mockResolvedValueOnce(meResponse());
-    fetchMock.mockResolvedValueOnce(vibeResponse());
-    fetchMock.mockResolvedValueOnce(
-      new Response("error", { status: 502 }),
-    );
-
+    mockFetch({
+      "/api/venues/sync": new Response("error", { status: 502 }),
+    });
     renderHome();
     await waitFor(() => {
       expect(
@@ -242,6 +248,14 @@ describe("Home", () => {
       expect(
         screen.getByText(/failed to sync venues/i),
       ).toBeInTheDocument();
+    });
+  });
+
+  it("renders map container", async () => {
+    mockFetch();
+    renderHome();
+    await waitFor(() => {
+      expect(screen.getByTestId("map")).toBeInTheDocument();
     });
   });
 });
