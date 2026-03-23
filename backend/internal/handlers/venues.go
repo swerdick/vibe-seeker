@@ -108,7 +108,10 @@ func (h *VenueHandler) SyncVenues(w http.ResponseWriter, r *http.Request) {
 			log.Error("venue fetch timed out", "fetched", len(tmVenues))
 			break
 		}
-		_ = limiter.Wait(syncCtx)
+		if err := limiter.Wait(syncCtx); err != nil {
+			log.Error("rate limiter wait failed", "error", err)
+			break
+		}
 		tileVenues, err := h.Ticketmaster.SearchVenues(syncCtx, tile)
 		if err != nil {
 			log.Error("failed to fetch ticketmaster venues", "tile", tile.GeoPoint, "error", err)
