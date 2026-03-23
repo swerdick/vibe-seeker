@@ -49,7 +49,7 @@ func (m *mockVenueStore) GetVenueFetchedAt(_ context.Context, _ string) (*time.T
 func (m *mockVenueStore) GetVenues(_ context.Context) ([]store.Venue, error) {
 	return m.venues, m.err
 }
-func (m *mockVenueStore) GetShowsForVenue(_ context.Context, _ string) ([]store.ShowSummary, error) {
+func (m *mockVenueStore) GetShowsForVenues(_ context.Context, _ []string) (map[string][]store.ShowSummary, error) {
 	return nil, nil
 }
 
