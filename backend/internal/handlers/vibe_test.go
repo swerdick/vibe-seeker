@@ -52,6 +52,25 @@ func (m *mockGenreStore) GetGenres(_ context.Context, _ string) (map[string]floa
 	return m.getGenres, m.getErr
 }
 
+type mockTagCache struct {
+	tags map[string][]lastfm.Tag
+}
+
+func (m *mockTagCache) GetCachedTags(_ context.Context, artistName string) ([]lastfm.Tag, error) {
+	if tags, ok := m.tags[artistName]; ok {
+		return tags, nil
+	}
+	return nil, nil
+}
+
+func (m *mockTagCache) UpsertArtistTags(_ context.Context, artistName string, tags []lastfm.Tag) error {
+	if m.tags == nil {
+		m.tags = make(map[string][]lastfm.Tag)
+	}
+	m.tags[artistName] = tags
+	return nil
+}
+
 func newMockServers(t *testing.T) (*spotify.Client, *lastfm.Client, func()) {
 	t.Helper()
 
@@ -124,6 +143,7 @@ func TestSyncVibe_Success(t *testing.T) {
 		}},
 		&mockTokenWriter{},
 		genreStore,
+		&mockTagCache{},
 	)
 	if err != nil {
 		t.Fatalf("NewVibeHandler: %v", err)
@@ -164,6 +184,7 @@ func TestSyncVibe_Unauthorized(t *testing.T) {
 		&mockTokenReader{tokens: &store.UserTokens{}},
 		&mockTokenWriter{},
 		&mockGenreStore{},
+		&mockTagCache{},
 	)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/vibe/sync", nil)
@@ -187,6 +208,7 @@ func TestSyncVibe_TokenRefresh(t *testing.T) {
 		}},
 		tokenWriter,
 		&mockGenreStore{},
+		&mockTagCache{},
 	)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/vibe/sync", nil)
@@ -215,6 +237,7 @@ func TestGetVibe_Success(t *testing.T) {
 		&mockTokenReader{tokens: &store.UserTokens{}},
 		&mockTokenWriter{},
 		genreStore,
+		&mockTagCache{},
 	)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/vibe", nil)
@@ -249,6 +272,7 @@ func TestGetVibe_Unauthorized(t *testing.T) {
 		&mockTokenReader{tokens: &store.UserTokens{}},
 		&mockTokenWriter{},
 		&mockGenreStore{},
+		&mockTagCache{},
 	)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/vibe", nil)
