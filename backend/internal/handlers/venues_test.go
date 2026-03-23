@@ -49,6 +49,9 @@ func (m *mockVenueStore) GetVenueFetchedAt(_ context.Context, _ string) (*time.T
 func (m *mockVenueStore) GetVenues(_ context.Context) ([]store.Venue, error) {
 	return m.venues, m.err
 }
+func (m *mockVenueStore) GetShowsForVenue(_ context.Context, _ string) ([]store.ShowSummary, error) {
+	return nil, nil
+}
 
 func newMockTMServer(t *testing.T) (*ticketmaster.Client, *httptest.Server) {
 	t.Helper()
@@ -202,7 +205,7 @@ func TestGetVenues_Success(t *testing.T) {
 
 	venueStore := &mockVenueStore{
 		venues: []store.Venue{
-			{ID: "tm_v1", Name: "Bowery Ballroom", Latitude: 40.7204, Longitude: -73.9934},
+			{ID: "tm_v1", Name: "Bowery Ballroom", Latitude: 40.7204, Longitude: -73.9934, ShowsTracked: 5},
 		},
 	}
 	h, _ := NewVenueHandler(tm, venueStore)

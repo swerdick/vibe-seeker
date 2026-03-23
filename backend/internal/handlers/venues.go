@@ -45,6 +45,7 @@ type VenueWriter interface {
 // VenueReader retrieves venue data.
 type VenueReader interface {
 	GetVenues(ctx context.Context) ([]store.Venue, error)
+	GetShowsForVenue(ctx context.Context, venueID string) ([]store.ShowSummary, error)
 }
 
 // VenueHandler orchestrates venue and event ingestion from Ticketmaster.
@@ -304,7 +305,12 @@ func (h *VenueHandler) SyncVenues(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// GetVenues returns all cached venues.
+type venueResponse struct {
+	store.Venue
+	Shows []store.ShowSummary `json:"shows"`
+}
+
+// GetVenues returns all cached venues with their upcoming shows.
 func (h *VenueHandler) GetVenues(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.ClaimsFromContext(r.Context())
 	if claims == nil {
@@ -312,17 +318,32 @@ func (h *VenueHandler) GetVenues(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	venues, err := h.VenueReader.GetVenues(r.Context())
+	ctx := r.Context()
+	venues, err := h.VenueReader.GetVenues(ctx)
 	if err != nil {
-		observability.Logger(r.Context()).Error("failed to read venues", "error", err)
+		observability.Logger(ctx).Error("failed to read venues", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 
+	// Only include venues with shows to keep the response manageable.
+	var result []venueResponse
+	for _, v := range venues {
+		if v.ShowsTracked == 0 {
+			continue
+		}
+		shows, err := h.VenueReader.GetShowsForVenue(ctx, v.ID)
+		if err != nil {
+			observability.Logger(ctx).Error("failed to read shows for venue", "venue", v.ID, "error", err)
+			shows = nil
+		}
+		result = append(result, venueResponse{Venue: v, Shows: shows})
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"venues": venues,
-		"count":  len(venues),
+		"venues": result,
+		"count":  len(result),
 	})
 }
 
