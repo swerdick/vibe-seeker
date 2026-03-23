@@ -35,6 +35,12 @@ type GenreReader interface {
 	GetGenres(ctx context.Context, userID string) (map[string]float32, error)
 }
 
+// TagCache provides read-through caching for Last.fm artist tags.
+type TagCache interface {
+	GetCachedTags(ctx context.Context, artistName string) ([]lastfm.Tag, error)
+	UpsertArtistTags(ctx context.Context, artistName string, tags []lastfm.Tag) error
+}
+
 // VibeHandler orchestrates vibe profile syncing via Spotify (top artists)
 // and Last.fm (genre/tag enrichment).
 type VibeHandler struct {
@@ -44,12 +50,13 @@ type VibeHandler struct {
 	TokenUpdater TokenWriter
 	Genres       GenreWriter
 	GenreReader  GenreReader
+	TagCache     TagCache
 }
 
 func NewVibeHandler(sp *spotify.Client, lfm *lastfm.Client, tokens TokenReader, tokenUpdater TokenWriter, genres interface {
 	GenreWriter
 	GenreReader
-}) (*VibeHandler, error) {
+}, tagCache TagCache) (*VibeHandler, error) {
 	if sp == nil {
 		return nil, errors.New("vibe: nil spotify client")
 	}
@@ -65,6 +72,9 @@ func NewVibeHandler(sp *spotify.Client, lfm *lastfm.Client, tokens TokenReader, 
 	if genres == nil {
 		return nil, errors.New("vibe: nil genre store")
 	}
+	if tagCache == nil {
+		return nil, errors.New("vibe: nil tag cache")
+	}
 	return &VibeHandler{
 		Spotify:      sp,
 		LastFM:       lfm,
@@ -72,6 +82,7 @@ func NewVibeHandler(sp *spotify.Client, lfm *lastfm.Client, tokens TokenReader, 
 		TokenUpdater: tokenUpdater,
 		Genres:       genres,
 		GenreReader:  genres,
+		TagCache:     tagCache,
 	}, nil
 }
 
@@ -124,7 +135,7 @@ func (h *VibeHandler) SyncVibe(w http.ResponseWriter, r *http.Request) {
 		seen[strings.ToLower(a.Name)] = true
 	}
 
-	// Fetch Last.fm tags for each unique artist.
+	// Fetch Last.fm tags for each unique artist, using the DB cache first.
 	// Use a standalone timeout so the sync isn't killed by a browser disconnect
 	// but also can't run unbounded.
 	// Rate-limit to 5 req/sec (200ms interval) to stay within Last.fm's limits.
@@ -135,19 +146,39 @@ func (h *VibeHandler) SyncVibe(w http.ResponseWriter, r *http.Request) {
 	defer ticker.Stop()
 
 	artistTags := make(map[string][]lastfm.Tag)
+	cacheHits := 0
 	for name := range seen {
 		if tagCtx.Err() != nil {
 			observability.Logger(ctx).Error("lastfm tag fetch timed out", "fetched", len(artistTags), "total", len(seen))
 			break
 		}
+
+		// Check cache first.
+		cached, err := h.TagCache.GetCachedTags(tagCtx, name)
+		if err != nil {
+			observability.Logger(ctx).Error("cache lookup failed", "artist", name, "error", err)
+		}
+		if cached != nil {
+			artistTags[name] = cached
+			cacheHits++
+			continue
+		}
+
+		// Cache miss — fetch from Last.fm (rate-limited).
 		<-ticker.C
 		tags, err := h.LastFM.FetchArtistTags(tagCtx, name)
 		if err != nil {
 			observability.Logger(ctx).Error("failed to fetch lastfm tags", "artist", name, "error", err)
-			continue // skip this artist, don't fail the whole sync
+			continue
 		}
 		artistTags[name] = tags
+
+		// Persist to cache.
+		if cacheErr := h.TagCache.UpsertArtistTags(tagCtx, name, tags); cacheErr != nil {
+			observability.Logger(ctx).Error("failed to cache lastfm tags", "artist", name, "error", cacheErr)
+		}
 	}
+	observability.Logger(ctx).Info("tag fetch complete", "total", len(seen), "cache_hits", cacheHits, "api_calls", len(seen)-cacheHits)
 
 	weights := lastfm.ComputeTagWeights(artistTags, rankings)
 

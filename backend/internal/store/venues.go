@@ -267,3 +267,37 @@ func (s *VenueStore) GetVenues(ctx context.Context) ([]Venue, error) {
 	}
 	return venues, rows.Err()
 }
+
+// ShowSummary holds minimal show data for venue popups.
+type ShowSummary struct {
+	Name     string    `json:"name"`
+	Date     time.Time `json:"date"`
+	PriceMin float64   `json:"price_min"`
+	PriceMax float64   `json:"price_max"`
+	URL      string    `json:"url"`
+}
+
+// GetShowsForVenue returns upcoming shows at a venue, ordered by date.
+func (s *VenueStore) GetShowsForVenue(ctx context.Context, venueID string) ([]ShowSummary, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT name, show_date, COALESCE(price_min, 0), COALESCE(price_max, 0), COALESCE(ticket_url, '')
+		FROM shows
+		WHERE venue_id = $1 AND show_date >= NOW()
+		ORDER BY show_date ASC
+		LIMIT 5
+	`, venueID)
+	if err != nil {
+		return nil, fmt.Errorf("querying shows for venue %s: %w", venueID, err)
+	}
+	defer rows.Close()
+
+	var shows []ShowSummary
+	for rows.Next() {
+		var s ShowSummary
+		if err := rows.Scan(&s.Name, &s.Date, &s.PriceMin, &s.PriceMax, &s.URL); err != nil {
+			return nil, fmt.Errorf("scanning show: %w", err)
+		}
+		shows = append(shows, s)
+	}
+	return shows, rows.Err()
+}
