@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -57,7 +58,9 @@ func (s *ArtistTagStore) GetCachedTags(ctx context.Context, artistName string) (
 
 	// Check TTL — if stale, delete and return miss.
 	if time.Since(fetchedAt) > ArtistTagTTL {
-		_, _ = s.pool.Exec(ctx, `DELETE FROM artist_tags WHERE artist_name = $1`, artistName)
+		if _, err := s.pool.Exec(ctx, `DELETE FROM artist_tags WHERE artist_name = $1`, artistName); err != nil {
+			slog.Error("failed to delete stale artist tags", "artist", artistName, "error", err)
+		}
 		return nil, nil
 	}
 

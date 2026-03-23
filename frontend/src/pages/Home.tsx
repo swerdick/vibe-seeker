@@ -70,10 +70,17 @@ export default function Home() {
         return res.json();
       })
       .then((data: { venues: VenueData[]; count: number }) => {
-        setVenues(data.venues || []);
+        const nextVenues = data.venues || [];
+        setVenues(nextVenues);
+        setSelectedVenue((current) =>
+          current && nextVenues.some((v) => v.ID === current.ID)
+            ? current
+            : null,
+        );
       })
       .catch(() => {
         setVenues([]);
+        setSelectedVenue(null);
       });
   }, []);
 

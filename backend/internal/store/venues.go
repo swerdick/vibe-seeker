@@ -277,27 +277,36 @@ type ShowSummary struct {
 	URL      string    `json:"url"`
 }
 
-// GetShowsForVenue returns upcoming shows at a venue, ordered by date.
-func (s *VenueStore) GetShowsForVenue(ctx context.Context, venueID string) ([]ShowSummary, error) {
+// GetShowsForVenues returns upcoming shows for multiple venues in a single query,
+// keyed by venue ID. Returns up to 5 upcoming shows per venue.
+func (s *VenueStore) GetShowsForVenues(ctx context.Context, venueIDs []string) (map[string][]ShowSummary, error) {
+	if len(venueIDs) == 0 {
+		return nil, nil
+	}
+
 	rows, err := s.pool.Query(ctx, `
-		SELECT name, show_date, COALESCE(price_min, 0), COALESCE(price_max, 0), COALESCE(ticket_url, '')
-		FROM shows
-		WHERE venue_id = $1 AND show_date >= NOW()
-		ORDER BY show_date ASC
-		LIMIT 5
-	`, venueID)
+		SELECT venue_id, name, show_date, COALESCE(price_min, 0), COALESCE(price_max, 0), COALESCE(ticket_url, '')
+		FROM (
+			SELECT *, ROW_NUMBER() OVER (PARTITION BY venue_id ORDER BY show_date ASC) AS rn
+			FROM shows
+			WHERE venue_id = ANY($1) AND show_date >= NOW()
+		) sub
+		WHERE rn <= 5
+		ORDER BY venue_id, show_date ASC
+	`, venueIDs)
 	if err != nil {
-		return nil, fmt.Errorf("querying shows for venue %s: %w", venueID, err)
+		return nil, fmt.Errorf("querying shows for venues: %w", err)
 	}
 	defer rows.Close()
 
-	var shows []ShowSummary
+	result := make(map[string][]ShowSummary)
 	for rows.Next() {
-		var s ShowSummary
-		if err := rows.Scan(&s.Name, &s.Date, &s.PriceMin, &s.PriceMax, &s.URL); err != nil {
+		var venueID string
+		var sh ShowSummary
+		if err := rows.Scan(&venueID, &sh.Name, &sh.Date, &sh.PriceMin, &sh.PriceMax, &sh.URL); err != nil {
 			return nil, fmt.Errorf("scanning show: %w", err)
 		}
-		shows = append(shows, s)
+		result[venueID] = append(result[venueID], sh)
 	}
-	return shows, rows.Err()
+	return result, rows.Err()
 }
