@@ -78,28 +78,28 @@ func (s *UserStore) UpdateTokens(ctx context.Context, userID, accessToken, refre
 	return nil
 }
 
-// UpsertGenres replaces a user's genre weights atomically.
-// It deletes existing genres and inserts the new set within a transaction,
+// UpsertVibes replaces a user's vibe weights atomically.
+// It deletes existing vibes and inserts the new set within a transaction,
 // then updates vibe_synced_at on the users row.
-func (s *UserStore) UpsertGenres(ctx context.Context, userID string, genres map[string]float32) error {
+func (s *UserStore) UpsertVibes(ctx context.Context, userID string, vibes map[string]float32) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		return fmt.Errorf("beginning genre upsert tx: %w", err)
+		return fmt.Errorf("beginning vibe upsert tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	if _, err := tx.Exec(ctx, `DELETE FROM user_genres WHERE user_id = $1`, userID); err != nil {
-		return fmt.Errorf("deleting old genres for user %s: %w", userID, err)
+	if _, err := tx.Exec(ctx, `DELETE FROM user_vibes WHERE user_id = $1`, userID); err != nil {
+		return fmt.Errorf("deleting old vibes for user %s: %w", userID, err)
 	}
 
 	batch := &pgx.Batch{}
-	for genre, weight := range genres {
-		batch.Queue(`INSERT INTO user_genres (user_id, genre, weight) VALUES ($1, $2, $3)`,
+	for genre, weight := range vibes {
+		batch.Queue(`INSERT INTO user_vibes (user_id, genre, weight) VALUES ($1, $2, $3)`,
 			userID, genre, weight)
 	}
 	br := tx.SendBatch(ctx, batch)
 	if err := br.Close(); err != nil {
-		return fmt.Errorf("inserting genres for user %s: %w", userID, err)
+		return fmt.Errorf("inserting vibes for user %s: %w", userID, err)
 	}
 
 	if _, err := tx.Exec(ctx, `UPDATE users SET vibe_synced_at = NOW(), updated_at = NOW() WHERE id = $1`, userID); err != nil {
@@ -107,30 +107,30 @@ func (s *UserStore) UpsertGenres(ctx context.Context, userID string, genres map[
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("committing genre upsert for user %s: %w", userID, err)
+		return fmt.Errorf("committing vibe upsert for user %s: %w", userID, err)
 	}
 	return nil
 }
 
-// GetGenres retrieves all genre weights for a user.
-func (s *UserStore) GetGenres(ctx context.Context, userID string) (map[string]float32, error) {
-	rows, err := s.pool.Query(ctx, `SELECT genre, weight FROM user_genres WHERE user_id = $1`, userID)
+// GetVibes retrieves all vibe weights for a user.
+func (s *UserStore) GetVibes(ctx context.Context, userID string) (map[string]float32, error) {
+	rows, err := s.pool.Query(ctx, `SELECT genre, weight FROM user_vibes WHERE user_id = $1`, userID)
 	if err != nil {
-		return nil, fmt.Errorf("querying genres for user %s: %w", userID, err)
+		return nil, fmt.Errorf("querying vibes for user %s: %w", userID, err)
 	}
 	defer rows.Close()
 
-	genres := make(map[string]float32)
+	vibes := make(map[string]float32)
 	for rows.Next() {
 		var genre string
 		var weight float32
 		if err := rows.Scan(&genre, &weight); err != nil {
-			return nil, fmt.Errorf("scanning genre row: %w", err)
+			return nil, fmt.Errorf("scanning vibe row: %w", err)
 		}
-		genres[genre] = weight
+		vibes[genre] = weight
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterating genre rows: %w", err)
+		return nil, fmt.Errorf("iterating vibe rows: %w", err)
 	}
-	return genres, nil
+	return vibes, nil
 }

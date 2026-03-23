@@ -123,7 +123,7 @@ func TestIntegration_UpdateTokens(t *testing.T) {
 	})
 }
 
-func TestIntegration_UpsertGenres(t *testing.T) {
+func TestIntegration_UpsertVibes(t *testing.T) {
 	pool := testPool(t)
 	ctx := context.Background()
 	s, _ := NewUserStore(pool)
@@ -131,14 +131,14 @@ func TestIntegration_UpsertGenres(t *testing.T) {
 	_ = s.UpsertUser(ctx, "test-genres-1", "Genre User", "tok", "ref", 9999)
 
 	genres := map[string]float32{"rock": 1.0, "indie": 0.7, "dream pop": 0.3}
-	err := s.UpsertGenres(ctx, "test-genres-1", genres)
+	err := s.UpsertVibes(ctx, "test-genres-1", genres)
 	if err != nil {
-		t.Fatalf("UpsertGenres: %v", err)
+		t.Fatalf("UpsertVibes: %v", err)
 	}
 
-	got, err := s.GetGenres(ctx, "test-genres-1")
+	got, err := s.GetVibes(ctx, "test-genres-1")
 	if err != nil {
-		t.Fatalf("GetGenres: %v", err)
+		t.Fatalf("GetVibes: %v", err)
 	}
 	if len(got) != 3 {
 		t.Fatalf("expected 3 genres, got %d", len(got))
@@ -151,21 +151,21 @@ func TestIntegration_UpsertGenres(t *testing.T) {
 	}
 
 	t.Cleanup(func() {
-		_, _ = pool.Exec(ctx, `DELETE FROM user_genres WHERE user_id = 'test-genres-1'`)
+		_, _ = pool.Exec(ctx, `DELETE FROM user_vibes WHERE user_id = 'test-genres-1'`)
 		_, _ = pool.Exec(ctx, `DELETE FROM users WHERE id = 'test-genres-1'`)
 	})
 }
 
-func TestIntegration_GetGenres_Empty(t *testing.T) {
+func TestIntegration_GetVibes_Empty(t *testing.T) {
 	pool := testPool(t)
 	ctx := context.Background()
 	s, _ := NewUserStore(pool)
 
 	_ = s.UpsertUser(ctx, "test-empty-1", "Empty User", "tok", "ref", 9999)
 
-	got, err := s.GetGenres(ctx, "test-empty-1")
+	got, err := s.GetVibes(ctx, "test-empty-1")
 	if err != nil {
-		t.Fatalf("GetGenres: %v", err)
+		t.Fatalf("GetVibes: %v", err)
 	}
 	if len(got) != 0 {
 		t.Errorf("expected 0 genres, got %d", len(got))
@@ -176,7 +176,7 @@ func TestIntegration_GetGenres_Empty(t *testing.T) {
 	})
 }
 
-func TestIntegration_UpsertGenres_Replaces(t *testing.T) {
+func TestIntegration_UpsertVibes_Replaces(t *testing.T) {
 	pool := testPool(t)
 	ctx := context.Background()
 	s, _ := NewUserStore(pool)
@@ -184,17 +184,17 @@ func TestIntegration_UpsertGenres_Replaces(t *testing.T) {
 	_ = s.UpsertUser(ctx, "test-replace-1", "Replace User", "tok", "ref", 9999)
 
 	// First upsert.
-	_ = s.UpsertGenres(ctx, "test-replace-1", map[string]float32{"rock": 1.0, "pop": 0.5})
+	_ = s.UpsertVibes(ctx, "test-replace-1", map[string]float32{"rock": 1.0, "pop": 0.5})
 
 	// Second upsert with different genres.
-	err := s.UpsertGenres(ctx, "test-replace-1", map[string]float32{"jazz": 0.9, "blues": 0.6})
+	err := s.UpsertVibes(ctx, "test-replace-1", map[string]float32{"jazz": 0.9, "blues": 0.6})
 	if err != nil {
-		t.Fatalf("second UpsertGenres: %v", err)
+		t.Fatalf("second UpsertVibes: %v", err)
 	}
 
-	got, err := s.GetGenres(ctx, "test-replace-1")
+	got, err := s.GetVibes(ctx, "test-replace-1")
 	if err != nil {
-		t.Fatalf("GetGenres: %v", err)
+		t.Fatalf("GetVibes: %v", err)
 	}
 
 	if len(got) != 2 {
@@ -208,7 +208,7 @@ func TestIntegration_UpsertGenres_Replaces(t *testing.T) {
 	}
 
 	t.Cleanup(func() {
-		_, _ = pool.Exec(ctx, `DELETE FROM user_genres WHERE user_id = 'test-replace-1'`)
+		_, _ = pool.Exec(ctx, `DELETE FROM user_vibes WHERE user_id = 'test-replace-1'`)
 		_, _ = pool.Exec(ctx, `DELETE FROM users WHERE id = 'test-replace-1'`)
 	})
 }
