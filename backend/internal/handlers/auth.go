@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/pseudo/vibe-seeker/backend/internal/auth"
+	"github.com/pseudo/vibe-seeker/backend/internal/configuration"
 	"github.com/pseudo/vibe-seeker/backend/internal/middleware"
 	"github.com/pseudo/vibe-seeker/backend/internal/observability"
 	"github.com/pseudo/vibe-seeker/backend/internal/spotify"
@@ -46,8 +47,8 @@ func NewAuthHandler(spotify *spotify.Client, users UserUpserter, jwtSecret, fron
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	state, err := auth.GenerateState()
 	if err != nil {
-		observability.Logger(r.Context()).Error("failed to generate oauth state", "error", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		httpError(w, r, http.StatusInternalServerError, "internal error",
+			"failed to generate oauth state", "error", err)
 		return
 	}
 
@@ -55,7 +56,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		Name:     "oauth_state",
 		Value:    state,
 		Path:     "/",
-		MaxAge:   600,
+		MaxAge:   configuration.OAuthStateCookieMaxAge,
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	})
@@ -92,29 +93,29 @@ func (h *AuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 
 	tokenResp, err := h.Spotify.ExchangeCode(r.Context(), code)
 	if err != nil {
-		observability.Logger(r.Context()).Error("failed to exchange code", "error", err)
-		http.Error(w, "failed to exchange code", http.StatusInternalServerError)
+		httpError(w, r, http.StatusInternalServerError, "failed to exchange code",
+			"failed to exchange code", "error", err)
 		return
 	}
 
 	profile, err := h.Spotify.FetchProfile(r.Context(), tokenResp.AccessToken)
 	if err != nil {
-		observability.Logger(r.Context()).Error("failed to fetch profile", "error", err)
-		http.Error(w, "failed to fetch profile", http.StatusInternalServerError)
+		httpError(w, r, http.StatusInternalServerError, "failed to fetch profile",
+			"failed to fetch profile", "error", err)
 		return
 	}
 
 	tokenExpiry := int(time.Now().Unix()) + tokenResp.ExpiresIn
 	if err := h.Users.UpsertUser(r.Context(), profile.ID, profile.DisplayName, tokenResp.AccessToken, tokenResp.RefreshToken, tokenExpiry); err != nil {
-		observability.Logger(r.Context()).Error("failed to persist user", "error", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		httpError(w, r, http.StatusInternalServerError, "internal error",
+			"failed to persist user", "error", err)
 		return
 	}
 
 	jwt, err := auth.CreateToken(h.JWTSecret, profile.ID, profile.DisplayName)
 	if err != nil {
-		observability.Logger(r.Context()).Error("failed to create token", "error", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		httpError(w, r, http.StatusInternalServerError, "internal error",
+			"failed to create token", "error", err)
 		return
 	}
 
@@ -122,7 +123,7 @@ func (h *AuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		Name:     "session",
 		Value:    jwt,
 		Path:     "/api",
-		MaxAge:   86400,
+		MaxAge:   configuration.SessionCookieMaxAge,
 		HttpOnly: true,
 		Secure:   h.SecureCookie,
 		SameSite: http.SameSiteLaxMode,

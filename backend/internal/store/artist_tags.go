@@ -9,10 +9,9 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/pseudo/vibe-seeker/backend/internal/configuration"
 	"github.com/pseudo/vibe-seeker/backend/internal/lastfm"
 )
-
-const ArtistTagTTL = 7 * 24 * time.Hour // 7 days
 
 // ArtistTagStore provides read-through caching for Last.fm artist tags.
 type ArtistTagStore struct {
@@ -57,7 +56,7 @@ func (s *ArtistTagStore) GetCachedTags(ctx context.Context, artistName string) (
 	}
 
 	// Check TTL — if stale, delete and return miss.
-	if time.Since(fetchedAt) > ArtistTagTTL {
+	if time.Since(fetchedAt) > configuration.ArtistTagCacheTTL {
 		if _, err := s.pool.Exec(ctx, `DELETE FROM artist_tags WHERE artist_name = $1`, artistName); err != nil {
 			slog.Error("failed to delete stale artist tags", "artist", artistName, "error", err)
 		}

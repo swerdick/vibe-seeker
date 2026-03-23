@@ -4,20 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"time"
 
+	"github.com/pseudo/vibe-seeker/backend/internal/configuration"
 	"github.com/pseudo/vibe-seeker/backend/internal/middleware"
 	"github.com/pseudo/vibe-seeker/backend/internal/observability"
+	"github.com/pseudo/vibe-seeker/backend/internal/ratelimit"
 	"github.com/pseudo/vibe-seeker/backend/internal/store"
 	"github.com/pseudo/vibe-seeker/backend/internal/ticketmaster"
-)
-
-const (
-	venueTTL    = 6 * time.Hour
-	syncTimeout = 10 * time.Minute
-	tmRateLimit = 200 * time.Millisecond
 )
 
 // nycSearchTiles covers the NYC metro area with overlapping 3-mile-radius
@@ -85,11 +80,11 @@ func (h *VenueHandler) SyncVenues(w http.ResponseWriter, r *http.Request) {
 	log := observability.Logger(ctx)
 
 	// TTL check: skip if data is fresh.
-	lastFetched, err := h.Venues.GetVenueFetchedAt(ctx, "ticketmaster")
+	lastFetched, err := h.Venues.GetVenueFetchedAt(ctx, configuration.DataSourceTicketmaster)
 	if err != nil {
 		log.Error("failed to check venue TTL, proceeding with sync", "error", err)
 	}
-	if err == nil && lastFetched != nil && time.Since(*lastFetched) < venueTTL {
+	if err == nil && lastFetched != nil && time.Since(*lastFetched) < configuration.VenueCacheTTL {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"synced":       false,
@@ -99,11 +94,11 @@ func (h *VenueHandler) SyncVenues(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	syncCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), syncTimeout)
+	syncCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), configuration.VenueSyncTimeout)
 	defer cancel()
 
-	ticker := time.NewTicker(tmRateLimit)
-	defer ticker.Stop()
+	limiter := ratelimit.NewLimiter(configuration.TicketmasterRateLimit)
+	defer limiter.Stop()
 
 	// 1. Fetch venues from tiled search regions, deduplicating by TM ID.
 	seen := make(map[string]bool)
@@ -113,7 +108,7 @@ func (h *VenueHandler) SyncVenues(w http.ResponseWriter, r *http.Request) {
 			log.Error("venue fetch timed out", "fetched", len(tmVenues))
 			break
 		}
-		<-ticker.C
+		_ = limiter.Wait(syncCtx)
 		tileVenues, err := h.Ticketmaster.SearchVenues(syncCtx, tile)
 		if err != nil {
 			log.Error("failed to fetch ticketmaster venues", "tile", tile.GeoPoint, "error", err)
@@ -131,15 +126,15 @@ func (h *VenueHandler) SyncVenues(w http.ResponseWriter, r *http.Request) {
 	storeVenues := mapVenues(tmVenues)
 	dbCtx := context.WithoutCancel(ctx)
 	if err := h.Venues.UpsertVenues(dbCtx, storeVenues); err != nil {
-		log.Error("failed to persist venues", "error", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		httpError(w, r, http.StatusInternalServerError, "internal error",
+			"failed to persist venues", "error", err)
 		return
 	}
 	log.Info("venues synced", "count", len(storeVenues))
 
 	// 2. Fetch events per venue with adaptive rate limiting.
 	// On 429: requeue the venue and increase delay by 1s.
-	// On 200: decrease delay by 1s (floor at tmRateLimit).
+	// On 200: decrease delay by 1s (floor at configuration.TicketmasterRateLimit).
 	now := time.Now().UTC().Format("2006-01-02T15:04:05Z")
 
 	var shows []store.Show
@@ -150,7 +145,7 @@ func (h *VenueHandler) SyncVenues(w http.ResponseWriter, r *http.Request) {
 
 	queue := make([]store.Venue, len(storeVenues))
 	copy(queue, storeVenues)
-	delay := tmRateLimit
+	delay := configuration.TicketmasterRateLimit
 	processed := 0
 
 	for len(queue) > 0 {
@@ -186,17 +181,17 @@ func (h *VenueHandler) SyncVenues(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Successful request — reduce delay toward floor.
-		if delay > tmRateLimit {
+		if delay > configuration.TicketmasterRateLimit {
 			delay -= 1 * time.Second
-			if delay < tmRateLimit {
-				delay = tmRateLimit
+			if delay < configuration.TicketmasterRateLimit {
+				delay = configuration.TicketmasterRateLimit
 			}
 		}
 		processed++
 		log.Info("events fetched", "venue", sv.Name, "events", len(tmEvents), "shows_total", len(shows)+len(tmEvents))
 
 		for _, ev := range tmEvents {
-			showID := "tm_" + ev.ID
+			showID := configuration.IDPrefixTicketmaster + ev.ID
 			showDate, err := time.Parse(time.RFC3339, ev.Dates.Start.DateTime)
 			if err != nil {
 				// Try localDate as fallback.
@@ -222,7 +217,7 @@ func (h *VenueHandler) SyncVenues(w http.ResponseWriter, r *http.Request) {
 				PriceMin:   priceMin,
 				PriceMax:   priceMax,
 				Status:     ev.Dates.Status.Code,
-				DataSource: "ticketmaster",
+				DataSource: configuration.DataSourceTicketmaster,
 			})
 
 			for i, attr := range ev.Embedded.Attractions {
@@ -268,29 +263,29 @@ func (h *VenueHandler) SyncVenues(w http.ResponseWriter, r *http.Request) {
 	// 4. Persist everything.
 	if len(shows) > 0 {
 		if err := h.Venues.UpsertShows(dbCtx, shows); err != nil {
-			log.Error("failed to persist shows", "error", err)
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			httpError(w, r, http.StatusInternalServerError, "internal error",
+				"failed to persist shows", "error", err)
 			return
 		}
 	}
 	if len(artists) > 0 {
 		if err := h.Venues.UpsertArtists(dbCtx, artists); err != nil {
-			log.Error("failed to persist artists", "error", err)
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			httpError(w, r, http.StatusInternalServerError, "internal error",
+				"failed to persist artists", "error", err)
 			return
 		}
 	}
 	if len(showArtists) > 0 {
 		if err := h.Venues.UpsertShowArtists(dbCtx, showArtists); err != nil {
-			log.Error("failed to persist show-artist links", "error", err)
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			httpError(w, r, http.StatusInternalServerError, "internal error",
+				"failed to persist show-artist links", "error", err)
 			return
 		}
 	}
 	if len(classifications) > 0 {
 		if err := h.Venues.UpsertShowClassifications(dbCtx, classifications); err != nil {
-			log.Error("failed to persist show classifications", "error", err)
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			httpError(w, r, http.StatusInternalServerError, "internal error",
+				"failed to persist show classifications", "error", err)
 			return
 		}
 	}
@@ -321,8 +316,8 @@ func (h *VenueHandler) GetVenues(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	venues, err := h.VenueReader.GetVenues(ctx)
 	if err != nil {
-		observability.Logger(ctx).Error("failed to read venues", "error", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		httpError(w, r, http.StatusInternalServerError, "internal error",
+			"failed to read venues", "error", err)
 		return
 	}
 
@@ -379,7 +374,7 @@ func mapVenues(tmVenues []ticketmaster.Venue) []store.Venue {
 		}
 
 		result = append(result, store.Venue{
-			ID:            fmt.Sprintf("tm_%s", v.ID),
+			ID:            configuration.IDPrefixTicketmaster + v.ID,
 			Name:          v.Name,
 			Latitude:      lat,
 			Longitude:     lng,
@@ -391,7 +386,7 @@ func mapVenues(tmVenues []ticketmaster.Venue) []store.Venue {
 			ParkingDetail: v.ParkingDetail,
 			GeneralInfo:   v.GeneralInfo,
 			Ada:           v.Ada,
-			DataSource:    "ticketmaster",
+			DataSource:    configuration.DataSourceTicketmaster,
 			TMID:          v.ID,
 		})
 	}
