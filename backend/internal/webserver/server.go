@@ -48,7 +48,7 @@ func New(cfg configuration.Config, pool *pgxpool.Pool) (*http.Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("creating artist tag store: %w", err)
 	}
-	vibeHandler, err := handlers.NewVibeHandler(spotifyClient, lastfmClient, userStore, userStore, userStore, artistTagStore)
+	vibeHandler, err := handlers.NewVibeHandler(spotifyClient, lastfmClient, userStore, userStore, artistTagStore)
 	if err != nil {
 		return nil, fmt.Errorf("creating vibe handler: %w", err)
 	}

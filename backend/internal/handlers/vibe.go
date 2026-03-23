@@ -17,24 +17,16 @@ import (
 	"github.com/pseudo/vibe-seeker/backend/internal/store"
 )
 
-// TokenReader retrieves stored Spotify tokens for a user.
-type TokenReader interface {
+// TokenStore reads and writes Spotify tokens.
+type TokenStore interface {
 	GetTokens(ctx context.Context, userID string) (*store.UserTokens, error)
-}
-
-// TokenWriter updates stored Spotify tokens after a refresh.
-type TokenWriter interface {
 	UpdateTokens(ctx context.Context, userID, accessToken, refreshToken string, tokenExpiry int) error
 }
 
-// GenreWriter persists a user's genre weights.
-type GenreWriter interface {
-	UpsertGenres(ctx context.Context, userID string, genres map[string]float32) error
-}
-
-// GenreReader retrieves a user's genre weights.
-type GenreReader interface {
-	GetGenres(ctx context.Context, userID string) (map[string]float32, error)
+// VibeStore reads and writes user vibe profiles.
+type VibeStore interface {
+	UpsertVibes(ctx context.Context, userID string, vibes map[string]float32) error
+	GetVibes(ctx context.Context, userID string) (map[string]float32, error)
 }
 
 // TagCache provides read-through caching for Last.fm artist tags.
@@ -46,19 +38,14 @@ type TagCache interface {
 // VibeHandler orchestrates vibe profile syncing via Spotify (top artists)
 // and Last.fm (genre/tag enrichment).
 type VibeHandler struct {
-	Spotify      *spotify.Client
-	LastFM       *lastfm.Client
-	Tokens       TokenReader
-	TokenUpdater TokenWriter
-	Genres       GenreWriter
-	GenreReader  GenreReader
-	TagCache     TagCache
+	Spotify  *spotify.Client
+	LastFM   *lastfm.Client
+	Tokens   TokenStore
+	Vibes    VibeStore
+	TagCache TagCache
 }
 
-func NewVibeHandler(sp *spotify.Client, lfm *lastfm.Client, tokens TokenReader, tokenUpdater TokenWriter, genres interface {
-	GenreWriter
-	GenreReader
-}, tagCache TagCache) (*VibeHandler, error) {
+func NewVibeHandler(sp *spotify.Client, lfm *lastfm.Client, tokens TokenStore, vibes VibeStore, tagCache TagCache) (*VibeHandler, error) {
 	if sp == nil {
 		return nil, errors.New("vibe: nil spotify client")
 	}
@@ -66,25 +53,20 @@ func NewVibeHandler(sp *spotify.Client, lfm *lastfm.Client, tokens TokenReader, 
 		return nil, errors.New("vibe: nil lastfm client")
 	}
 	if tokens == nil {
-		return nil, errors.New("vibe: nil token reader")
+		return nil, errors.New("vibe: nil token store")
 	}
-	if tokenUpdater == nil {
-		return nil, errors.New("vibe: nil token writer")
-	}
-	if genres == nil {
-		return nil, errors.New("vibe: nil genre store")
+	if vibes == nil {
+		return nil, errors.New("vibe: nil vibe store")
 	}
 	if tagCache == nil {
 		return nil, errors.New("vibe: nil tag cache")
 	}
 	return &VibeHandler{
-		Spotify:      sp,
-		LastFM:       lfm,
-		Tokens:       tokens,
-		TokenUpdater: tokenUpdater,
-		Genres:       genres,
-		GenreReader:  genres,
-		TagCache:     tagCache,
+		Spotify:  sp,
+		LastFM:   lfm,
+		Tokens:   tokens,
+		Vibes:    vibes,
+		TagCache: tagCache,
 	}, nil
 }
 
@@ -187,7 +169,7 @@ func (h *VibeHandler) SyncVibe(w http.ResponseWriter, r *http.Request) {
 	// Use a fresh context for the DB write — the data is already in memory,
 	// so we don't want the Last.fm timeout to prevent saving results.
 	dbCtx := context.WithoutCancel(ctx)
-	if err := h.Genres.UpsertGenres(dbCtx, claims.SpotifyID, weights); err != nil {
+	if err := h.Vibes.UpsertVibes(dbCtx, claims.SpotifyID, weights); err != nil {
 		httpError(w, r, http.StatusInternalServerError, "internal error",
 			"failed to persist genre weights", "error", err)
 		return
@@ -210,7 +192,7 @@ func (h *VibeHandler) GetVibe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	genres, err := h.GenreReader.GetGenres(r.Context(), claims.SpotifyID)
+	vibes, err := h.Vibes.GetVibes(r.Context(), claims.SpotifyID)
 	if err != nil {
 		httpError(w, r, http.StatusInternalServerError, "internal error",
 			"failed to read genre weights", "error", err)
@@ -219,8 +201,8 @@ func (h *VibeHandler) GetVibe(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"genres":      genres,
-		"genre_count": len(genres),
+		"genres":      vibes,
+		"genre_count": len(vibes),
 	})
 }
 
@@ -238,7 +220,7 @@ func (h *VibeHandler) ensureValidToken(ctx context.Context, userID string) (stri
 		}
 
 		newExpiry := int(time.Now().Unix()) + refreshed.ExpiresIn
-		if err := h.TokenUpdater.UpdateTokens(ctx, userID, refreshed.AccessToken, refreshed.RefreshToken, newExpiry); err != nil {
+		if err := h.Tokens.UpdateTokens(ctx, userID, refreshed.AccessToken, refreshed.RefreshToken, newExpiry); err != nil {
 			return "", err
 		}
 

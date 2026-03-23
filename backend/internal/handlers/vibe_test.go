@@ -15,41 +15,37 @@ import (
 	"github.com/pseudo/vibe-seeker/backend/internal/store"
 )
 
-type mockTokenReader struct {
-	tokens *store.UserTokens
-	err    error
+type mockTokenStore struct {
+	tokens       *store.UserTokens
+	err          error
+	updateCalled bool
 }
 
-func (m *mockTokenReader) GetTokens(_ context.Context, _ string) (*store.UserTokens, error) {
+func (m *mockTokenStore) GetTokens(_ context.Context, _ string) (*store.UserTokens, error) {
 	return m.tokens, m.err
 }
 
-type mockTokenWriter struct {
-	called bool
-	err    error
-}
-
-func (m *mockTokenWriter) UpdateTokens(_ context.Context, _, _, _ string, _ int) error {
-	m.called = true
+func (m *mockTokenStore) UpdateTokens(_ context.Context, _, _, _ string, _ int) error {
+	m.updateCalled = true
 	return m.err
 }
 
-type mockGenreStore struct {
+type mockVibeStore struct {
 	upsertCalled bool
-	upsertGenres map[string]float32
+	upsertVibes  map[string]float32
 	upsertErr    error
-	getGenres    map[string]float32
+	getVibes     map[string]float32
 	getErr       error
 }
 
-func (m *mockGenreStore) UpsertGenres(_ context.Context, _ string, genres map[string]float32) error {
+func (m *mockVibeStore) UpsertVibes(_ context.Context, _ string, vibes map[string]float32) error {
 	m.upsertCalled = true
-	m.upsertGenres = genres
+	m.upsertVibes = vibes
 	return m.upsertErr
 }
 
-func (m *mockGenreStore) GetGenres(_ context.Context, _ string) (map[string]float32, error) {
-	return m.getGenres, m.getErr
+func (m *mockVibeStore) GetVibes(_ context.Context, _ string) (map[string]float32, error) {
+	return m.getVibes, m.getErr
 }
 
 type mockTagCache struct {
@@ -136,13 +132,12 @@ func TestSyncVibe_Success(t *testing.T) {
 	sp, lfm, cleanup := newMockServers(t)
 	defer cleanup()
 
-	genreStore := &mockGenreStore{}
+	vibeStore := &mockVibeStore{}
 	h, err := NewVibeHandler(sp, lfm,
-		&mockTokenReader{tokens: &store.UserTokens{
+		&mockTokenStore{tokens: &store.UserTokens{
 			AccessToken: "valid-token", RefreshToken: "refresh", TokenExpiry: int(time.Now().Unix()) + 3600,
 		}},
-		&mockTokenWriter{},
-		genreStore,
+		vibeStore,
 		&mockTagCache{},
 	)
 	if err != nil {
@@ -159,12 +154,12 @@ func TestSyncVibe_Success(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 
-	if !genreStore.upsertCalled {
-		t.Fatal("expected UpsertGenres to be called")
+	if !vibeStore.upsertCalled {
+		t.Fatal("expected UpsertVibes to be called")
 	}
 
-	if _, ok := genreStore.upsertGenres["rock"]; !ok {
-		t.Error("expected 'rock' in genre weights (from Last.fm tags)")
+	if _, ok := vibeStore.upsertVibes["rock"]; !ok {
+		t.Error("expected 'rock' in vibe weights (from Last.fm tags)")
 	}
 
 	var body map[string]interface{}
@@ -181,9 +176,8 @@ func TestSyncVibe_Unauthorized(t *testing.T) {
 	defer cleanup()
 
 	h, _ := NewVibeHandler(sp, lfm,
-		&mockTokenReader{tokens: &store.UserTokens{}},
-		&mockTokenWriter{},
-		&mockGenreStore{},
+		&mockTokenStore{tokens: &store.UserTokens{}},
+		&mockVibeStore{},
 		&mockTagCache{},
 	)
 
@@ -201,13 +195,12 @@ func TestSyncVibe_TokenRefresh(t *testing.T) {
 	sp, lfm, cleanup := newMockServers(t)
 	defer cleanup()
 
-	tokenWriter := &mockTokenWriter{}
+	tokenStore := &mockTokenStore{tokens: &store.UserTokens{
+		AccessToken: "expired-token", RefreshToken: "refresh", TokenExpiry: int(time.Now().Unix()) - 100,
+	}}
 	h, _ := NewVibeHandler(sp, lfm,
-		&mockTokenReader{tokens: &store.UserTokens{
-			AccessToken: "expired-token", RefreshToken: "refresh", TokenExpiry: int(time.Now().Unix()) - 100,
-		}},
-		tokenWriter,
-		&mockGenreStore{},
+		tokenStore,
+		&mockVibeStore{},
 		&mockTagCache{},
 	)
 
@@ -221,7 +214,7 @@ func TestSyncVibe_TokenRefresh(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 
-	if !tokenWriter.called {
+	if !tokenStore.updateCalled {
 		t.Error("expected UpdateTokens to be called for expired token")
 	}
 }
@@ -230,13 +223,12 @@ func TestGetVibe_Success(t *testing.T) {
 	sp, lfm, cleanup := newMockServers(t)
 	defer cleanup()
 
-	genreStore := &mockGenreStore{
-		getGenres: map[string]float32{"rock": 1.0, "indie": 0.7},
+	vibeStore := &mockVibeStore{
+		getVibes: map[string]float32{"rock": 1.0, "indie": 0.7},
 	}
 	h, _ := NewVibeHandler(sp, lfm,
-		&mockTokenReader{tokens: &store.UserTokens{}},
-		&mockTokenWriter{},
-		genreStore,
+		&mockTokenStore{tokens: &store.UserTokens{}},
+		vibeStore,
 		&mockTagCache{},
 	)
 
@@ -255,12 +247,12 @@ func TestGetVibe_Success(t *testing.T) {
 		t.Fatalf("failed to decode response: %v", err)
 	}
 
-	genres, ok := body["genres"].(map[string]interface{})
+	vibes, ok := body["genres"].(map[string]interface{})
 	if !ok {
 		t.Fatal("expected genres map in response")
 	}
-	if genres["rock"] == nil {
-		t.Error("expected 'rock' in genres")
+	if vibes["rock"] == nil {
+		t.Error("expected 'rock' in vibes")
 	}
 }
 
@@ -269,9 +261,8 @@ func TestGetVibe_Unauthorized(t *testing.T) {
 	defer cleanup()
 
 	h, _ := NewVibeHandler(sp, lfm,
-		&mockTokenReader{tokens: &store.UserTokens{}},
-		&mockTokenWriter{},
-		&mockGenreStore{},
+		&mockTokenStore{tokens: &store.UserTokens{}},
+		&mockVibeStore{},
 		&mockTagCache{},
 	)
 
