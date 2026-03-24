@@ -263,6 +263,57 @@ func TestGetVenues_Unauthorized(t *testing.T) {
 	}
 }
 
+func TestSyncVenueVibes_Success(t *testing.T) {
+	tm, mock := newMockTMServer(t)
+	defer mock.Close()
+	lfm, tc := newMockLastFMForVenues()
+
+	venueStore := &mockVenueStore{
+		venues: []store.Venue{
+			{ID: "tm_v1", Name: "Test Venue", ShowsTracked: 5},
+		},
+	}
+	h, err := NewVenueHandler(tm, lfm, venueStore, tc)
+	if err != nil {
+		t.Fatalf("NewVenueHandler: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/venues/vibes", nil)
+	req = addTestClaims(t, req)
+	rec := httptest.NewRecorder()
+
+	h.SyncVenueVibes(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body map[string]interface{}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if body["synced"] != true {
+		t.Error("expected synced=true")
+	}
+}
+
+func TestSyncVenueVibes_Unauthorized(t *testing.T) {
+	tm, mock := newMockTMServer(t)
+	defer mock.Close()
+	lfm, tc := newMockLastFMForVenues()
+
+	h, _ := NewVenueHandler(tm, lfm, &mockVenueStore{}, tc)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/venues/vibes", nil)
+	rec := httptest.NewRecorder()
+
+	h.SyncVenueVibes(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", rec.Code)
+	}
+}
+
 func TestMapVenues_FiltersNonUS(t *testing.T) {
 	tmVenues := []ticketmaster.Venue{
 		{
