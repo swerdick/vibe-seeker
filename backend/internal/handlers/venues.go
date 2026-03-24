@@ -4,15 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/pseudo/vibe-seeker/backend/internal/configuration"
+	"github.com/pseudo/vibe-seeker/backend/internal/lastfm"
 	"github.com/pseudo/vibe-seeker/backend/internal/middleware"
 	"github.com/pseudo/vibe-seeker/backend/internal/observability"
 	"github.com/pseudo/vibe-seeker/backend/internal/ratelimit"
 	"github.com/pseudo/vibe-seeker/backend/internal/store"
 	"github.com/pseudo/vibe-seeker/backend/internal/ticketmaster"
+	"github.com/pseudo/vibe-seeker/backend/internal/vibes"
 )
 
 // nycSearchTiles covers the NYC metro area with overlapping 3-mile-radius
@@ -41,29 +45,49 @@ type VenueWriter interface {
 type VenueReader interface {
 	GetVenues(ctx context.Context) ([]store.Venue, error)
 	GetShowsForVenues(ctx context.Context, venueIDs []string) (map[string][]store.ShowSummary, error)
+	GetAllVenueArtists(ctx context.Context, venueIDs []string) (map[string][]store.VenueArtist, error)
+	GetAllVenueVibes(ctx context.Context, venueIDs []string) (map[string]map[string]float32, error)
+}
+
+// VenueVibeWriter persists venue vibe profiles.
+type VenueVibeWriter interface {
+	UpsertVenueVibes(ctx context.Context, venueID string, vibeWeights map[string]float32) error
 }
 
 // VenueHandler orchestrates venue and event ingestion from Ticketmaster.
 type VenueHandler struct {
 	Ticketmaster *ticketmaster.Client
+	LastFM       *lastfm.Client
 	Venues       VenueWriter
 	VenueReader  VenueReader
+	VenueVibes   VenueVibeWriter
+	TagCache     TagCache
 }
 
-func NewVenueHandler(tm *ticketmaster.Client, venues interface {
+func NewVenueHandler(tm *ticketmaster.Client, lfm *lastfm.Client, venues interface {
 	VenueWriter
 	VenueReader
-}) (*VenueHandler, error) {
+	VenueVibeWriter
+}, tagCache TagCache) (*VenueHandler, error) {
 	if tm == nil {
 		return nil, errors.New("venues: nil ticketmaster client")
+	}
+	if lfm == nil {
+		return nil, errors.New("venues: nil lastfm client")
 	}
 	if venues == nil {
 		return nil, errors.New("venues: nil venue store")
 	}
+	if tagCache == nil {
+		return nil, errors.New("venues: nil tag cache")
+	}
 	return &VenueHandler{
 		Ticketmaster: tm,
+		LastFM:       lfm,
 		Venues:       venues,
 		VenueReader:  venues,
+		VenueVibes:   venues,
+		TagCache:     tagCache,
 	}, nil
 }
 
@@ -295,17 +319,54 @@ func (h *VenueHandler) SyncVenues(w http.ResponseWriter, r *http.Request) {
 
 	log.Info("venue sync complete", "venues", len(storeVenues), "shows", len(shows), "artists", len(artists))
 
+	// 5. Compute venue vibes from show artists + Last.fm tags.
+	vibesComputed := h.computeVenueVibes(syncCtx, ctx, storeVenues, log)
+
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"synced":       true,
-		"venues_count": len(storeVenues),
-		"shows_count":  len(shows),
+		"synced":          true,
+		"venues_count":    len(storeVenues),
+		"shows_count":     len(shows),
+		"vibes_computed":  vibesComputed,
+	})
+}
+
+// SyncVenueVibes computes vibe profiles for all venues without re-fetching
+// from Ticketmaster. Useful for local dev when you want to recompute vibes
+// without the full venue sync.
+func (h *VenueHandler) SyncVenueVibes(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.ClaimsFromContext(r.Context())
+	if claims == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	ctx := r.Context()
+	log := observability.Logger(ctx)
+
+	venues, err := h.VenueReader.GetVenues(ctx)
+	if err != nil {
+		httpError(w, r, http.StatusInternalServerError, "internal error",
+			"failed to read venues for vibe computation", "error", err)
+		return
+	}
+
+	syncCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), configuration.VenueSyncTimeout)
+	defer cancel()
+
+	computed := h.computeVenueVibes(syncCtx, ctx, venues, log)
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"synced":         true,
+		"vibes_computed": computed,
 	})
 }
 
 type venueResponse struct {
 	store.Venue
 	Shows []store.ShowSummary `json:"shows"`
+	Vibes map[string]float32  `json:"vibes,omitempty"`
 }
 
 // GetVenues returns all cached venues with their upcoming shows.
@@ -336,11 +397,16 @@ func (h *VenueHandler) GetVenues(w http.ResponseWriter, r *http.Request) {
 	}
 
 	showsByVenue := make(map[string][]store.ShowSummary)
+	vibesByVenue := make(map[string]map[string]float32)
 	if len(venueIDs) > 0 {
 		var err error
 		showsByVenue, err = h.VenueReader.GetShowsForVenues(ctx, venueIDs)
 		if err != nil {
 			observability.Logger(ctx).Error("failed to read shows for venues", "error", err)
+		}
+		vibesByVenue, err = h.VenueReader.GetAllVenueVibes(ctx, venueIDs)
+		if err != nil {
+			observability.Logger(ctx).Error("failed to read venue vibes", "error", err)
 		}
 	}
 
@@ -349,6 +415,7 @@ func (h *VenueHandler) GetVenues(w http.ResponseWriter, r *http.Request) {
 		result = append(result, venueResponse{
 			Venue: venueMap[id],
 			Shows: showsByVenue[id],
+			Vibes: vibesByVenue[id],
 		})
 	}
 
@@ -394,4 +461,123 @@ func mapVenues(tmVenues []ticketmaster.Venue) []store.Venue {
 		})
 	}
 	return result
+}
+
+// computeVenueVibes computes vibe profiles for all venues with shows.
+// For each venue's artists, it fetches Last.fm tags (cached where possible)
+// and computes a recency-weighted vibe vector.
+// Returns the number of venues with vibes computed.
+func (h *VenueHandler) computeVenueVibes(syncCtx, parentCtx context.Context, venues []store.Venue, log *slog.Logger) int {
+	// Collect venues with shows.
+	var venueIDs []string
+	for _, v := range venues {
+		if v.ShowsTracked > 0 {
+			venueIDs = append(venueIDs, v.ID)
+		}
+	}
+	if len(venueIDs) == 0 {
+		return 0
+	}
+
+	// Get all artists for all venues in one query.
+	allArtists, err := h.VenueReader.GetAllVenueArtists(syncCtx, venueIDs)
+	if err != nil {
+		log.Error("failed to get venue artists for vibe computation", "error", err)
+		return 0
+	}
+
+	// Collect unique artist names across all venues.
+	uniqueArtists := make(map[string]bool)
+	for _, artists := range allArtists {
+		for _, a := range artists {
+			uniqueArtists[strings.ToLower(a.ArtistName)] = true
+		}
+	}
+
+	// Fetch tags for all artists (cache-first, then Last.fm).
+	limiter := ratelimit.NewLimiter(configuration.LastFMRateLimit)
+	defer limiter.Stop()
+
+	artistTags := make(map[string][]lastfm.Tag)
+	cacheHits := 0
+	for name := range uniqueArtists {
+		if syncCtx.Err() != nil {
+			log.Error("venue vibe tag fetch timed out", "fetched", len(artistTags), "total", len(uniqueArtists))
+			break
+		}
+
+		cached, err := h.TagCache.GetCachedTags(syncCtx, name)
+		if err != nil {
+			log.Error("cache lookup failed", "artist", name, "error", err)
+		}
+		if cached != nil {
+			artistTags[name] = cached
+			cacheHits++
+			continue
+		}
+
+		if err := limiter.Wait(syncCtx); err != nil {
+			break
+		}
+		tags, err := h.LastFM.FetchArtistTags(syncCtx, name)
+		if err != nil {
+			log.Error("failed to fetch lastfm tags for venue vibe", "artist", name, "error", err)
+			continue
+		}
+
+		if len(tags) > 0 {
+			artistTags[name] = tags
+			if cacheErr := h.TagCache.UpsertArtistTags(syncCtx, name, tags); cacheErr != nil {
+				log.Error("failed to cache lastfm tags", "artist", name, "error", cacheErr)
+			}
+			continue
+		}
+
+		// Last.fm miss — fall back to Ticketmaster classifications.
+		tmTags, tmErr := h.TagCache.GetClassificationsForArtist(syncCtx, name)
+		if tmErr != nil {
+			log.Error("failed to get TM classifications", "artist", name, "error", tmErr)
+			continue
+		}
+		if len(tmTags) > 0 {
+			log.Info("using ticketmaster classifications as fallback", "artist", name, "tags", len(tmTags))
+			artistTags[name] = tmTags
+			if cacheErr := h.TagCache.UpsertArtistTagsWithSource(syncCtx, name, tmTags, "ticketmaster"); cacheErr != nil {
+				log.Error("failed to cache TM tags", "artist", name, "error", cacheErr)
+			}
+		} else {
+			log.Info("no tag data available for artist", "artist", name, "sources", "lastfm,ticketmaster")
+		}
+	}
+	log.Info("venue vibe tag fetch complete", "unique_artists", len(uniqueArtists), "cache_hits", cacheHits)
+
+	// Compute vibes per venue.
+	dbCtx := context.WithoutCancel(parentCtx)
+	computed := 0
+	for _, venueID := range venueIDs {
+		venueArtists := allArtists[venueID]
+		if len(venueArtists) == 0 {
+			continue
+		}
+
+		// Convert store.VenueArtist to vibes.VenueArtist.
+		va := make([]vibes.VenueArtist, len(venueArtists))
+		for i, a := range venueArtists {
+			va[i] = vibes.VenueArtist{ArtistName: a.ArtistName, ShowDate: a.ShowDate}
+		}
+
+		venueVibe := vibes.ComputeVenueVibe(va, artistTags)
+		if len(venueVibe) == 0 {
+			continue
+		}
+
+		if err := h.VenueVibes.UpsertVenueVibes(dbCtx, venueID, venueVibe); err != nil {
+			log.Error("failed to persist venue vibes", "venue", venueID, "error", err)
+			continue
+		}
+		computed++
+	}
+
+	log.Info("venue vibes computed", "computed", computed, "total_venues", len(venueIDs))
+	return computed
 }

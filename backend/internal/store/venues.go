@@ -310,3 +310,142 @@ func (s *VenueStore) GetShowsForVenues(ctx context.Context, venueIDs []string) (
 	}
 	return result, rows.Err()
 }
+
+// VenueArtist represents an artist who played at a venue on a specific date.
+type VenueArtist struct {
+	ArtistName string
+	ShowDate   time.Time
+}
+
+// GetVenueArtists returns all artists who played at a venue with their show dates.
+func (s *VenueStore) GetVenueArtists(ctx context.Context, venueID string) ([]VenueArtist, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT a.name, s.show_date
+		FROM artists a
+		JOIN show_artists sa ON a.id = sa.artist_id
+		JOIN shows s ON sa.show_id = s.id
+		WHERE s.venue_id = $1
+		ORDER BY s.show_date DESC
+	`, venueID)
+	if err != nil {
+		return nil, fmt.Errorf("querying venue artists for %s: %w", venueID, err)
+	}
+	defer rows.Close()
+
+	var result []VenueArtist
+	for rows.Next() {
+		var va VenueArtist
+		if err := rows.Scan(&va.ArtistName, &va.ShowDate); err != nil {
+			return nil, fmt.Errorf("scanning venue artist: %w", err)
+		}
+		result = append(result, va)
+	}
+	return result, rows.Err()
+}
+
+// GetAllVenueArtists returns artists + show dates for all venues in a single query,
+// keyed by venue ID.
+func (s *VenueStore) GetAllVenueArtists(ctx context.Context, venueIDs []string) (map[string][]VenueArtist, error) {
+	if len(venueIDs) == 0 {
+		return nil, nil
+	}
+
+	rows, err := s.pool.Query(ctx, `
+		SELECT s.venue_id, a.name, s.show_date
+		FROM artists a
+		JOIN show_artists sa ON a.id = sa.artist_id
+		JOIN shows s ON sa.show_id = s.id
+		WHERE s.venue_id = ANY($1)
+		ORDER BY s.venue_id, s.show_date DESC
+	`, venueIDs)
+	if err != nil {
+		return nil, fmt.Errorf("querying all venue artists: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[string][]VenueArtist)
+	for rows.Next() {
+		var venueID string
+		var va VenueArtist
+		if err := rows.Scan(&venueID, &va.ArtistName, &va.ShowDate); err != nil {
+			return nil, fmt.Errorf("scanning venue artist: %w", err)
+		}
+		result[venueID] = append(result[venueID], va)
+	}
+	return result, rows.Err()
+}
+
+// UpsertVenueVibes replaces a venue's vibe profile atomically.
+func (s *VenueStore) UpsertVenueVibes(ctx context.Context, venueID string, vibeWeights map[string]float32) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("beginning venue vibe upsert tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if _, err := tx.Exec(ctx, `DELETE FROM venue_vibes WHERE venue_id = $1`, venueID); err != nil {
+		return fmt.Errorf("deleting old venue vibes for %s: %w", venueID, err)
+	}
+
+	batch := &pgx.Batch{}
+	for tag, weight := range vibeWeights {
+		batch.Queue(`INSERT INTO venue_vibes (venue_id, tag, weight) VALUES ($1, $2, $3)`,
+			venueID, tag, float64(weight))
+	}
+	br := tx.SendBatch(ctx, batch)
+	if err := br.Close(); err != nil {
+		return fmt.Errorf("inserting venue vibes for %s: %w", venueID, err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("committing venue vibe upsert for %s: %w", venueID, err)
+	}
+	return nil
+}
+
+// GetVenueVibes retrieves a venue's vibe profile.
+func (s *VenueStore) GetVenueVibes(ctx context.Context, venueID string) (map[string]float32, error) {
+	rows, err := s.pool.Query(ctx, `SELECT tag, weight FROM venue_vibes WHERE venue_id = $1`, venueID)
+	if err != nil {
+		return nil, fmt.Errorf("querying venue vibes for %s: %w", venueID, err)
+	}
+	defer rows.Close()
+
+	result := make(map[string]float32)
+	for rows.Next() {
+		var tag string
+		var weight float64
+		if err := rows.Scan(&tag, &weight); err != nil {
+			return nil, fmt.Errorf("scanning venue vibe: %w", err)
+		}
+		result[tag] = float32(weight)
+	}
+	return result, rows.Err()
+}
+
+// GetAllVenueVibes retrieves vibe profiles for multiple venues in one query.
+func (s *VenueStore) GetAllVenueVibes(ctx context.Context, venueIDs []string) (map[string]map[string]float32, error) {
+	if len(venueIDs) == 0 {
+		return nil, nil
+	}
+
+	rows, err := s.pool.Query(ctx, `SELECT venue_id, tag, weight FROM venue_vibes WHERE venue_id = ANY($1)`, venueIDs)
+	if err != nil {
+		return nil, fmt.Errorf("querying all venue vibes: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[string]map[string]float32)
+	for rows.Next() {
+		var venueID, tag string
+		var weight float64
+		if err := rows.Scan(&venueID, &tag, &weight); err != nil {
+			return nil, fmt.Errorf("scanning venue vibe: %w", err)
+		}
+		if result[venueID] == nil {
+			result[venueID] = make(map[string]float32)
+		}
+		result[venueID][tag] = float32(weight)
+	}
+	return result, rows.Err()
+}

@@ -60,11 +60,12 @@ func New(cfg configuration.Config, pool *pgxpool.Pool) (*http.Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("creating venue store: %w", err)
 	}
-	venueHandler, err := handlers.NewVenueHandler(tmClient, venueStore)
+	venueHandler, err := handlers.NewVenueHandler(tmClient, lastfmClient, venueStore, artistTagStore)
 	if err != nil {
 		return nil, fmt.Errorf("creating venue handler: %w", err)
 	}
 	mux.Handle("POST /api/venues/sync", requireAuth(http.HandlerFunc(venueHandler.SyncVenues)))
+	mux.Handle("POST /api/venues/vibes", requireAuth(http.HandlerFunc(venueHandler.SyncVenueVibes)))
 	mux.Handle("GET /api/venues", requireAuth(http.HandlerFunc(venueHandler.GetVenues)))
 
 	var handler http.Handler = mux

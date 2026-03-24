@@ -67,6 +67,14 @@ func (m *mockTagCache) UpsertArtistTags(_ context.Context, artistName string, ta
 	return nil
 }
 
+func (m *mockTagCache) UpsertArtistTagsWithSource(_ context.Context, artistName string, tags []lastfm.Tag, _ string) error {
+	return m.UpsertArtistTags(context.Background(), artistName, tags)
+}
+
+func (m *mockTagCache) GetClassificationsForArtist(_ context.Context, _ string) ([]lastfm.Tag, error) {
+	return nil, nil
+}
+
 func newMockServers(t *testing.T) (*spotify.Client, *lastfm.Client, func()) {
 	t.Helper()
 

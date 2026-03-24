@@ -48,6 +48,8 @@ export default function Home() {
   const [venueError, setVenueError] = useState<string | null>(null);
   const [venues, setVenues] = useState<VenueData[]>([]);
   const [selectedVenue, setSelectedVenue] = useState<VenueData | null>(null);
+  const [vibesSyncing, setVibesSyncing] = useState(false);
+  const [vibesComputed, setVibesComputed] = useState<number | null>(null);
 
   const fetchVibe = useCallback(() => {
     fetch("/api/vibe", { credentials: "include" })
@@ -125,6 +127,28 @@ export default function Home() {
       });
   };
 
+  const handleVenueVibeSync = () => {
+    setVibesSyncing(true);
+    setVibesComputed(null);
+    fetch("/api/venues/vibes", { method: "POST", credentials: "include" })
+      .then((res) => {
+        if (!res.ok) throw new Error("venue vibe sync failed");
+        return res.json();
+      })
+      .then((data: { vibes_computed?: number }) => {
+        if (typeof data.vibes_computed === "number") {
+          setVibesComputed(data.vibes_computed);
+        }
+        fetchVenues();
+      })
+      .catch(() => {
+        // silently fail for dev convenience
+      })
+      .finally(() => {
+        setVibesSyncing(false);
+      });
+  };
+
   const handleVenueSync = () => {
     setVenuesSyncing(true);
     setVenueError(null);
@@ -190,6 +214,16 @@ export default function Home() {
           {venueError && <span className="error">{venueError}</span>}
           {venueCount !== null && (
             <span className="venue-count">{venueCount} venues</span>
+          )}
+          <button
+            className="button"
+            onClick={handleVenueVibeSync}
+            disabled={vibesSyncing}
+          >
+            {vibesSyncing ? "Computing..." : "Sync Venue Vibes"}
+          </button>
+          {vibesComputed !== null && (
+            <span className="venue-count">{vibesComputed} vibes</span>
           )}
           <button className="button button-secondary" onClick={handleLogout}>
             Log out
