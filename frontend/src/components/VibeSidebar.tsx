@@ -38,7 +38,16 @@ export default function VibeSidebar({
                   <li
                     key={genre}
                     className={`genre-row ${active ? "" : "genre-row-disabled"}`}
+                    role="checkbox"
+                    aria-checked={active}
+                    tabIndex={0}
                     onClick={() => onToggleGenre(genre)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onToggleGenre(genre);
+                      }
+                    }}
                   >
                     <span className="genre-name">{genre}</span>
                     <span className="genre-bar-track">
