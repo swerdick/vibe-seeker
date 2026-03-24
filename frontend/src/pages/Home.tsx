@@ -1,40 +1,10 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import Map, { Marker, Popup } from "react-map-gl/maplibre";
-import "maplibre-gl/dist/maplibre-gl.css";
-
-interface User {
-  spotify_id: string;
-  display_name: string;
-}
-
-interface ShowSummary {
-  name: string;
-  date: string;
-  price_min: number;
-  price_max: number;
-  url: string;
-}
-
-interface VenueData {
-  ID: string;
-  Name: string;
-  Latitude: number;
-  Longitude: number;
-  Address: string;
-  City: string;
-  State: string;
-  ShowsTracked: number;
-  shows: ShowSummary[] | null;
-}
-
-const NYC_VIEW = {
-  latitude: 40.7128,
-  longitude: -74.006,
-  zoom: 12,
-};
-
-const MAP_STYLE = "https://tiles.openfreemap.org/styles/liberty";
+import TopBar from "../components/TopBar";
+import VenueMap from "../components/VenueMap";
+import VibeSidebar from "../components/VibeSidebar";
+import type { User, VenueData } from "../types";
+import { cosineSimilarity } from "../utils/matching";
 
 export default function Home() {
   const navigate = useNavigate();
@@ -50,6 +20,42 @@ export default function Home() {
   const [selectedVenue, setSelectedVenue] = useState<VenueData | null>(null);
   const [vibesSyncing, setVibesSyncing] = useState(false);
   const [vibesComputed, setVibesComputed] = useState<number | null>(null);
+  const [selectedGenres, setSelectedGenres] = useState<Set<string>>(
+    new Set(),
+  );
+  const [minMatch, setMinMatch] = useState(0);
+
+  // Build filtered user vibe vector from selected genres.
+  const filteredVibes = useMemo(() => {
+    if (!genres) return {};
+    const filtered: Record<string, number> = {};
+    for (const [genre, weight] of Object.entries(genres)) {
+      if (selectedGenres.has(genre)) {
+        filtered[genre] = weight;
+      }
+    }
+    return filtered;
+  }, [genres, selectedGenres]);
+
+  // Compute match scores for all venues.
+  const venueScores = useMemo(() => {
+    const scores = new Map<string, number>();
+    if (Object.keys(filteredVibes).length === 0) return scores;
+    for (const venue of venues) {
+      if (venue.vibes && Object.keys(venue.vibes).length > 0) {
+        scores.set(venue.ID, cosineSimilarity(filteredVibes, venue.vibes));
+      }
+    }
+    return scores;
+  }, [venues, filteredVibes]);
+
+  // Filter venues by minimum match threshold.
+  const visibleVenues = useMemo(() => {
+    if (minMatch <= 0) return venues;
+    return venues.filter((v) => (venueScores.get(v.ID) || 0) >= minMatch);
+  }, [venues, venueScores, minMatch]);
+
+  // --- Data fetching ---
 
   const fetchVibe = useCallback(() => {
     fetch("/api/vibe", { credentials: "include" })
@@ -59,6 +65,9 @@ export default function Home() {
       })
       .then((data: { genres: Record<string, number>; genre_count: number }) => {
         setGenres(data.genres);
+        if (data.genres) {
+          setSelectedGenres(new Set(Object.keys(data.genres)));
+        }
       })
       .catch(() => {
         setGenres(null);
@@ -108,7 +117,9 @@ export default function Home() {
     }
   }, [user, fetchVibe, fetchVenues]);
 
-  const handleSync = () => {
+  // --- Sync handlers ---
+
+  const handleSyncVibe = () => {
     setSyncing(true);
     setVibeError(null);
     fetch("/api/vibe/sync", { method: "POST", credentials: "include" })
@@ -116,40 +127,12 @@ export default function Home() {
         if (!res.ok) throw new Error("sync failed");
         return res.json();
       })
-      .then(() => {
-        fetchVibe();
-      })
-      .catch(() => {
-        setVibeError("Failed to sync vibe from Spotify.");
-      })
-      .finally(() => {
-        setSyncing(false);
-      });
+      .then(() => fetchVibe())
+      .catch(() => setVibeError("Failed to sync vibe from Spotify."))
+      .finally(() => setSyncing(false));
   };
 
-  const handleVenueVibeSync = () => {
-    setVibesSyncing(true);
-    setVibesComputed(null);
-    fetch("/api/venues/vibes", { method: "POST", credentials: "include" })
-      .then((res) => {
-        if (!res.ok) throw new Error("venue vibe sync failed");
-        return res.json();
-      })
-      .then((data: { vibes_computed?: number }) => {
-        if (typeof data.vibes_computed === "number") {
-          setVibesComputed(data.vibes_computed);
-        }
-        fetchVenues();
-      })
-      .catch(() => {
-        // silently fail for dev convenience
-      })
-      .finally(() => {
-        setVibesSyncing(false);
-      });
-  };
-
-  const handleVenueSync = () => {
+  const handleSyncVenues = () => {
     setVenuesSyncing(true);
     setVenueError(null);
     setVenueCount(null);
@@ -158,34 +141,55 @@ export default function Home() {
         if (!res.ok) throw new Error("venue sync failed");
         return res.json();
       })
-      .then(
-        (data: {
-          venues_count?: number;
-          count?: number;
-          synced?: boolean;
-        }) => {
-          if (typeof data.venues_count === "number") {
-            setVenueCount(data.venues_count);
-          }
-          fetchVenues();
-        },
-      )
-      .catch(() => {
-        setVenueError("Failed to sync venues from Ticketmaster.");
+      .then((data: { venues_count?: number }) => {
+        if (typeof data.venues_count === "number") setVenueCount(data.venues_count);
+        fetchVenues();
       })
-      .finally(() => {
-        setVenuesSyncing(false);
-      });
+      .catch(() => setVenueError("Failed to sync venues from Ticketmaster."))
+      .finally(() => setVenuesSyncing(false));
+  };
+
+  const handleSyncVenueVibes = () => {
+    setVibesSyncing(true);
+    setVibesComputed(null);
+    fetch("/api/venues/vibes", { method: "POST", credentials: "include" })
+      .then((res) => {
+        if (!res.ok) throw new Error("venue vibe sync failed");
+        return res.json();
+      })
+      .then((data: { vibes_computed?: number }) => {
+        if (typeof data.vibes_computed === "number") setVibesComputed(data.vibes_computed);
+        fetchVenues();
+      })
+      .catch(() => {})
+      .finally(() => setVibesSyncing(false));
   };
 
   const handleLogout = () => {
-    fetch("/api/auth/logout", {
-      method: "POST",
-      credentials: "include",
-    }).then(() => {
-      navigate("/", { replace: true });
+    fetch("/api/auth/logout", { method: "POST", credentials: "include" })
+      .then(() => navigate("/", { replace: true }));
+  };
+
+  // --- Genre selection ---
+
+  const toggleGenre = (genre: string) => {
+    setSelectedGenres((prev) => {
+      const next = new Set(prev);
+      if (next.has(genre)) next.delete(genre);
+      else next.add(genre);
+      return next;
     });
   };
+
+  const selectAllGenres = () => {
+    if (genres) setSelectedGenres(new Set(Object.keys(genres)));
+  };
+
+  const selectNoGenres = () => {
+    setSelectedGenres(new Set());
+  };
+
+  // --- Render ---
 
   if (loading) {
     return (
@@ -197,131 +201,38 @@ export default function Home() {
 
   return (
     <div className="app-layout">
-      <div className="top-bar">
-        <span className="top-bar-greeting">Hello, {user?.display_name}</span>
-        <div className="top-bar-actions">
-          <button className="button" onClick={handleSync} disabled={syncing}>
-            {syncing ? "Syncing..." : "Sync Vibe"}
-          </button>
-          {vibeError && <span className="error">{vibeError}</span>}
-          <button
-            className="button"
-            onClick={handleVenueSync}
-            disabled={venuesSyncing}
-          >
-            {venuesSyncing ? "Syncing..." : "Sync Venues"}
-          </button>
-          {venueError && <span className="error">{venueError}</span>}
-          {venueCount !== null && (
-            <span className="venue-count">{venueCount} venues</span>
-          )}
-          <button
-            className="button"
-            onClick={handleVenueVibeSync}
-            disabled={vibesSyncing}
-          >
-            {vibesSyncing ? "Computing..." : "Sync Venue Vibes"}
-          </button>
-          {vibesComputed !== null && (
-            <span className="venue-count">{vibesComputed} vibes</span>
-          )}
-          <button className="button button-secondary" onClick={handleLogout}>
-            Log out
-          </button>
-        </div>
-      </div>
+      <TopBar
+        displayName={user?.display_name || ""}
+        syncing={syncing}
+        vibeError={vibeError}
+        venuesSyncing={venuesSyncing}
+        venueError={venueError}
+        venueCount={venueCount}
+        vibesSyncing={vibesSyncing}
+        vibesComputed={vibesComputed}
+        onSyncVibe={handleSyncVibe}
+        onSyncVenues={handleSyncVenues}
+        onSyncVenueVibes={handleSyncVenueVibes}
+        onLogout={handleLogout}
+      />
       <div className="main-content">
-        <div className="map-container">
-          <Map
-            initialViewState={NYC_VIEW}
-            style={{ width: "100%", height: "100%" }}
-            mapStyle={MAP_STYLE}
-          >
-            {venues.map((venue) => (
-              <Marker
-                key={venue.ID}
-                latitude={venue.Latitude}
-                longitude={venue.Longitude}
-                onClick={(e) => {
-                  e.originalEvent.stopPropagation();
-                  setSelectedVenue(venue);
-                }}
-              >
-                <div
-                  className={`venue-marker ${venue.ShowsTracked > 0 ? "venue-marker-active" : ""}`}
-                />
-              </Marker>
-            ))}
-            {selectedVenue && (
-              <Popup
-                latitude={selectedVenue.Latitude}
-                longitude={selectedVenue.Longitude}
-                onClose={() => setSelectedVenue(null)}
-                closeOnClick={false}
-                maxWidth="300px"
-              >
-                <div className="venue-popup">
-                  <h3>{selectedVenue.Name}</h3>
-                  {selectedVenue.Address && <p>{selectedVenue.Address}</p>}
-                  <p className="venue-popup-meta">
-                    {selectedVenue.ShowsTracked} shows tracked
-                  </p>
-                  {selectedVenue.shows && selectedVenue.shows.length > 0 && (
-                    <div className="venue-popup-shows">
-                      <h4>Upcoming Shows</h4>
-                      <ul>
-                        {selectedVenue.shows.slice(0, 5).map((show, i) => (
-                          <li key={i}>
-                            <span className="show-name">{show.name}</span>
-                            <span className="show-date">
-                              {new Date(show.date).toLocaleDateString()}
-                            </span>
-                            {show.price_min > 0 && (
-                              <span className="show-price">
-                                ${show.price_min}
-                                {show.price_max > show.price_min &&
-                                  `-$${show.price_max}`}
-                              </span>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              </Popup>
-            )}
-          </Map>
-        </div>
-        <div className="sidebar">
-          <h2>Your Vibe</h2>
-          {genres && Object.keys(genres).length > 0 ? (
-            <div className="genre-list">
-              <ul>
-                {Object.entries(genres)
-                  .sort(([, a], [, b]) => b - a)
-                  .map(([genre, weight]) => (
-                    <li key={genre}>
-                      <span className="genre-name">{genre}</span>
-                      <span className="genre-bar-track">
-                        <span
-                          className="genre-bar"
-                          style={{
-                            display: "block",
-                            width: `${weight * 100}%`,
-                          }}
-                        />
-                      </span>
-                    </li>
-                  ))}
-              </ul>
-            </div>
-          ) : (
-            <p className="sidebar-empty">
-              Click "Sync Vibe" to load your music profile.
-            </p>
-          )}
-        </div>
+        <VenueMap
+          venues={visibleVenues}
+          venueScores={venueScores}
+          selectedVenue={selectedVenue}
+          minMatch={minMatch}
+          visibleCount={visibleVenues.length}
+          onSelectVenue={setSelectedVenue}
+          onClosePopup={() => setSelectedVenue(null)}
+          onMinMatchChange={setMinMatch}
+        />
+        <VibeSidebar
+          genres={genres}
+          selectedGenres={selectedGenres}
+          onToggleGenre={toggleGenre}
+          onSelectAll={selectAllGenres}
+          onSelectNone={selectNoGenres}
+        />
       </div>
     </div>
   );

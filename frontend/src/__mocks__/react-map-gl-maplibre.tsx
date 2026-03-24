@@ -1,39 +1,23 @@
-import React from "react";
-
-export default function Map({
-  children,
-}: {
-  children?: React.ReactNode;
-  [key: string]: unknown;
-}) {
-  return <div data-testid="map">{children}</div>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export default function MapGL(props: any) {
+  return <div data-testid="map">{props?.children}</div>;
 }
 
-export function Marker({
-  children,
-  onClick,
-}: {
-  children?: React.ReactNode;
-  onClick?: (e: { originalEvent: { stopPropagation: () => void } }) => void;
-  [key: string]: unknown;
-}) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function Marker(props: any) {
   return (
     <div
       data-testid="marker"
       onClick={() =>
-        onClick?.({ originalEvent: { stopPropagation: () => {} } })
+        props?.onClick?.({ originalEvent: { stopPropagation: () => {} } })
       }
     >
-      {children}
+      {props?.children}
     </div>
   );
 }
 
-export function Popup({
-  children,
-}: {
-  children?: React.ReactNode;
-  [key: string]: unknown;
-}) {
-  return <div data-testid="popup">{children}</div>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function Popup(props: any) {
+  return <div data-testid="popup">{props?.children}</div>;
 }

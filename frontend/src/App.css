@@ -51,18 +51,41 @@
   overflow: hidden;
 }
 
+/* Map area — controls above the map */
+.map-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.map-controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 1rem;
+  background-color: #1a1a1a;
+  border-bottom: 1px solid #333;
+  flex-shrink: 0;
+}
+
+.match-slider-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: #ccc;
+}
+
+.match-slider {
+  width: 150px;
+  accent-color: #1db954;
+}
+
 .map-container {
   flex: 1;
   position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   background-color: #111;
-}
-
-.map-placeholder {
-  color: #555;
-  font-size: 1.2rem;
 }
 
 /* Sidebar */
@@ -131,17 +154,59 @@
   text-align: left;
 }
 
+.genre-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #333;
+}
+
+.genre-control-btn {
+  padding: 0.2rem 0.6rem;
+  background-color: #333;
+  color: #ccc;
+  border: 1px solid #555;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.genre-control-btn:hover {
+  background-color: #444;
+  color: #fff;
+}
+
+.genre-count-label {
+  font-size: 0.75rem;
+  color: #666;
+  margin-left: auto;
+}
+
 .genre-list ul {
   list-style: none;
   padding: 0;
   margin: 0;
 }
 
-.genre-list li {
+.genre-row {
   display: flex;
   align-items: center;
   margin-bottom: 0.4rem;
   gap: 0.5rem;
+  cursor: pointer;
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+  transition: background-color 0.15s;
+}
+
+.genre-row:hover {
+  background-color: #2a2a2a;
+}
+
+.genre-row-disabled {
+  opacity: 0.4;
 }
 
 .genre-name {
@@ -149,6 +214,7 @@
   text-align: right;
   font-size: 0.8rem;
   color: #ccc;
+  user-select: none;
 }
 
 .genre-bar-track {
@@ -163,24 +229,30 @@
   height: 100%;
   background-color: #1db954;
   border-radius: 3px;
+  transition: opacity 0.2s;
 }
 
 /* Map markers */
 .venue-marker {
-  width: 10px;
-  height: 10px;
-  background-color: #666;
-  border: 2px solid #999;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.6);
   border-radius: 50%;
   cursor: pointer;
+  transition: transform 0.15s;
 }
 
-.venue-marker-active {
-  background-color: #1db954;
-  border-color: #1ed760;
+.venue-marker:hover {
+  transform: scale(1.5);
 }
 
-/* Venue popup */
+/* Venue popup — fix close button visibility */
+.maplibregl-popup-close-button {
+  color: #333 !important;
+  font-size: 1.2rem;
+  padding: 0.25rem 0.5rem;
+}
+
 .venue-popup {
   color: #222;
   font-size: 0.85rem;
@@ -189,10 +261,36 @@
 .venue-popup h3 {
   margin: 0 0 0.25rem 0;
   font-size: 1rem;
+  padding-right: 1.5rem; /* room for close button */
 }
 
 .venue-popup p {
   margin: 0.15rem 0;
+}
+
+.venue-popup-match {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.venue-vibe-tags {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.25rem;
+  overflow-x: auto;
+  padding: 0.25rem 0;
+  scrollbar-width: thin;
+}
+
+.vibe-tag {
+  display: inline-block;
+  padding: 0.1rem 0.4rem;
+  background-color: #e8f5e9;
+  color: #2e7d32;
+  border-radius: 3px;
+  font-size: 0.7rem;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .venue-popup-meta {
