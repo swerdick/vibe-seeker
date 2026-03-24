@@ -15,6 +15,7 @@ import (
 	"github.com/pseudo/vibe-seeker/backend/internal/ratelimit"
 	"github.com/pseudo/vibe-seeker/backend/internal/spotify"
 	"github.com/pseudo/vibe-seeker/backend/internal/store"
+	"github.com/pseudo/vibe-seeker/backend/internal/vibes"
 )
 
 // TokenStore reads and writes Spotify tokens.
@@ -29,10 +30,12 @@ type VibeStore interface {
 	GetVibes(ctx context.Context, userID string) (map[string]float32, error)
 }
 
-// TagCache provides read-through caching for Last.fm artist tags.
+// TagCache provides read-through caching for artist tags.
 type TagCache interface {
 	GetCachedTags(ctx context.Context, artistName string) ([]lastfm.Tag, error)
 	UpsertArtistTags(ctx context.Context, artistName string, tags []lastfm.Tag) error
+	UpsertArtistTagsWithSource(ctx context.Context, artistName string, tags []lastfm.Tag, source string) error
+	GetClassificationsForArtist(ctx context.Context, artistName string) ([]lastfm.Tag, error)
 }
 
 // VibeHandler orchestrates vibe profile syncing via Spotify (top artists)
@@ -102,19 +105,27 @@ func (h *VibeHandler) SyncVibe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Build rankings and collect unique artist names.
-	var rankings []lastfm.ArtistRanking
+	// Build weighted artists and collect unique names.
+	var weighted []vibes.WeightedArtist
 	seen := make(map[string]bool)
 
 	for i, a := range mediumResp.Items {
-		rankings = append(rankings, lastfm.ArtistRanking{
-			Name: a.Name, Position: i, RangeMultiplier: 1.0,
+		rankWeight := float32(1.0) - float32(i)*0.02
+		if rankWeight < 0 {
+			rankWeight = 0
+		}
+		weighted = append(weighted, vibes.WeightedArtist{
+			Name: a.Name, Weight: rankWeight * 1.0, // medium_term multiplier
 		})
 		seen[strings.ToLower(a.Name)] = true
 	}
 	for i, a := range shortResp.Items {
-		rankings = append(rankings, lastfm.ArtistRanking{
-			Name: a.Name, Position: i, RangeMultiplier: 0.5,
+		rankWeight := float32(1.0) - float32(i)*0.02
+		if rankWeight < 0 {
+			rankWeight = 0
+		}
+		weighted = append(weighted, vibes.WeightedArtist{
+			Name: a.Name, Weight: rankWeight * 0.5, // short_term multiplier
 		})
 		seen[strings.ToLower(a.Name)] = true
 	}
@@ -155,16 +166,34 @@ func (h *VibeHandler) SyncVibe(w http.ResponseWriter, r *http.Request) {
 			observability.Logger(ctx).Error("failed to fetch lastfm tags", "artist", name, "error", err)
 			continue
 		}
-		artistTags[name] = tags
 
-		// Persist to cache.
-		if cacheErr := h.TagCache.UpsertArtistTags(tagCtx, name, tags); cacheErr != nil {
-			observability.Logger(ctx).Error("failed to cache lastfm tags", "artist", name, "error", cacheErr)
+		if len(tags) > 0 {
+			artistTags[name] = tags
+			if cacheErr := h.TagCache.UpsertArtistTags(tagCtx, name, tags); cacheErr != nil {
+				observability.Logger(ctx).Error("failed to cache lastfm tags", "artist", name, "error", cacheErr)
+			}
+			continue
+		}
+
+		// Last.fm miss — fall back to Ticketmaster classifications.
+		tmTags, tmErr := h.TagCache.GetClassificationsForArtist(tagCtx, name)
+		if tmErr != nil {
+			observability.Logger(ctx).Error("failed to get TM classifications", "artist", name, "error", tmErr)
+			continue
+		}
+		if len(tmTags) > 0 {
+			observability.Logger(ctx).Info("using ticketmaster classifications as fallback", "artist", name, "tags", len(tmTags))
+			artistTags[name] = tmTags
+			if cacheErr := h.TagCache.UpsertArtistTagsWithSource(tagCtx, name, tmTags, "ticketmaster"); cacheErr != nil {
+				observability.Logger(ctx).Error("failed to cache TM tags", "artist", name, "error", cacheErr)
+			}
+		} else {
+			observability.Logger(ctx).Info("no tag data available for artist", "artist", name)
 		}
 	}
 	observability.Logger(ctx).Info("tag fetch complete", "total", len(seen), "cache_hits", cacheHits, "api_calls", len(seen)-cacheHits)
 
-	weights := lastfm.ComputeTagWeights(artistTags, rankings)
+	weights := vibes.ComputeVibes(artistTags, weighted)
 
 	// Use a fresh context for the DB write — the data is already in memory,
 	// so we don't want the Last.fm timeout to prevent saving results.

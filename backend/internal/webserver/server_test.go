@@ -146,6 +146,7 @@ func TestNew_ProtectedRoutesRequireAuth(t *testing.T) {
 		{http.MethodPost, "/api/vibe/sync"},
 		{http.MethodGet, "/api/vibe"},
 		{http.MethodPost, "/api/venues/sync"},
+		{http.MethodPost, "/api/venues/vibes"},
 		{http.MethodGet, "/api/venues"},
 	}
 

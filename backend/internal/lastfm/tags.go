@@ -8,6 +8,9 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"unicode"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 // MinTagCount is the minimum Last.fm tag relevance score (0-100) to keep.
@@ -32,8 +35,32 @@ type topTagsResponse struct {
 }
 
 // FetchArtistTags returns the top tags for an artist, filtered by minimum
-// count and blocklist. Returns nil (not an error) if the artist is not found.
+// count and blocklist. If the initial query returns no results and the artist
+// name contains diacritics, retries with stripped diacritics.
 func (c *Client) FetchArtistTags(ctx context.Context, artistName string) ([]Tag, error) {
+	tags, err := c.fetchTags(ctx, artistName)
+	if err != nil {
+		return nil, err
+	}
+	if len(tags) > 0 {
+		return tags, nil
+	}
+
+	// Retry with stripped diacritics if the name contains non-ASCII.
+	stripped := stripDiacritics(artistName)
+	if stripped != artistName {
+		slog.Info("retrying lastfm with stripped diacritics", "original", artistName, "stripped", stripped)
+		tags, err = c.fetchTags(ctx, stripped)
+		if err != nil {
+			return nil, err
+		}
+		return tags, nil
+	}
+
+	return nil, nil
+}
+
+func (c *Client) fetchTags(ctx context.Context, artistName string) ([]Tag, error) {
 	params := url.Values{
 		"method":      {"artist.gettoptags"},
 		"artist":      {artistName},
@@ -65,6 +92,18 @@ func (c *Client) FetchArtistTags(ctx context.Context, artistName string) ([]Tag,
 	filtered := filterTags(result.TopTags.Tag)
 	slog.Info("lastfm tags fetched", "artist", artistName, "raw", len(result.TopTags.Tag), "filtered", len(filtered))
 	return filtered, nil
+}
+
+// stripDiacritics removes accent marks and diacritical marks from a string.
+// e.g., "rüfüs" → "rufus", "Beyoncé" → "Beyonce"
+func stripDiacritics(s string) string {
+	var b strings.Builder
+	for _, r := range norm.NFD.String(s) {
+		if !unicode.Is(unicode.Mn, r) { // Mn = Mark, Nonspacing (combining diacriticals)
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 func filterTags(tags []Tag) []Tag {

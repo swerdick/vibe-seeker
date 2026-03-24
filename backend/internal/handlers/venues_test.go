@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pseudo/vibe-seeker/backend/internal/lastfm"
 	"github.com/pseudo/vibe-seeker/backend/internal/store"
 	"github.com/pseudo/vibe-seeker/backend/internal/ticketmaster"
 )
@@ -51,6 +52,20 @@ func (m *mockVenueStore) GetVenues(_ context.Context) ([]store.Venue, error) {
 }
 func (m *mockVenueStore) GetShowsForVenues(_ context.Context, _ []string) (map[string][]store.ShowSummary, error) {
 	return nil, nil
+}
+func (m *mockVenueStore) GetAllVenueArtists(_ context.Context, _ []string) (map[string][]store.VenueArtist, error) {
+	return nil, nil
+}
+func (m *mockVenueStore) GetAllVenueVibes(_ context.Context, _ []string) (map[string]map[string]float32, error) {
+	return nil, nil
+}
+func (m *mockVenueStore) UpsertVenueVibes(_ context.Context, _ string, _ map[string]float32) error {
+	return nil
+}
+
+func newMockLastFMForVenues() (*lastfm.Client, *mockTagCache) {
+	lfm := lastfm.NewClient("test-key")
+	return lfm, &mockTagCache{}
 }
 
 func newMockTMServer(t *testing.T) (*ticketmaster.Client, *httptest.Server) {
@@ -119,9 +134,10 @@ func newMockTMServer(t *testing.T) (*ticketmaster.Client, *httptest.Server) {
 func TestSyncVenues_Success(t *testing.T) {
 	tm, mock := newMockTMServer(t)
 	defer mock.Close()
+	lfm, tc := newMockLastFMForVenues()
 
 	venueStore := &mockVenueStore{}
-	h, err := NewVenueHandler(tm, venueStore)
+	h, err := NewVenueHandler(tm, lfm, venueStore, tc)
 	if err != nil {
 		t.Fatalf("NewVenueHandler: %v", err)
 	}
@@ -158,10 +174,11 @@ func TestSyncVenues_Success(t *testing.T) {
 func TestSyncVenues_TTLSkip(t *testing.T) {
 	tm, mock := newMockTMServer(t)
 	defer mock.Close()
+	lfm, tc := newMockLastFMForVenues()
 
 	recent := time.Now().Add(-1 * time.Hour)
 	venueStore := &mockVenueStore{fetchedAt: &recent}
-	h, _ := NewVenueHandler(tm, venueStore)
+	h, _ := NewVenueHandler(tm, lfm, venueStore, tc)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/venues/sync", nil)
 	req = addTestClaims(t, req)
@@ -186,8 +203,9 @@ func TestSyncVenues_TTLSkip(t *testing.T) {
 func TestSyncVenues_Unauthorized(t *testing.T) {
 	tm, mock := newMockTMServer(t)
 	defer mock.Close()
+	lfm, tc := newMockLastFMForVenues()
 
-	h, _ := NewVenueHandler(tm, &mockVenueStore{})
+	h, _ := NewVenueHandler(tm, lfm, &mockVenueStore{}, tc)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/venues/sync", nil)
 	rec := httptest.NewRecorder()
@@ -202,13 +220,14 @@ func TestSyncVenues_Unauthorized(t *testing.T) {
 func TestGetVenues_Success(t *testing.T) {
 	tm, mock := newMockTMServer(t)
 	defer mock.Close()
+	lfm, tc := newMockLastFMForVenues()
 
 	venueStore := &mockVenueStore{
 		venues: []store.Venue{
 			{ID: "tm_v1", Name: "Bowery Ballroom", Latitude: 40.7204, Longitude: -73.9934, ShowsTracked: 5},
 		},
 	}
-	h, _ := NewVenueHandler(tm, venueStore)
+	h, _ := NewVenueHandler(tm, lfm, venueStore, tc)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/venues", nil)
 	req = addTestClaims(t, req)
@@ -230,8 +249,9 @@ func TestGetVenues_Success(t *testing.T) {
 func TestGetVenues_Unauthorized(t *testing.T) {
 	tm, mock := newMockTMServer(t)
 	defer mock.Close()
+	lfm, tc := newMockLastFMForVenues()
 
-	h, _ := NewVenueHandler(tm, &mockVenueStore{})
+	h, _ := NewVenueHandler(tm, lfm, &mockVenueStore{}, tc)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/venues", nil)
 	rec := httptest.NewRecorder()

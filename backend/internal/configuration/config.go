@@ -17,7 +17,7 @@ const (
 // Cache and sync TTLs.
 const (
 	VenueCacheTTL     = 6 * time.Hour
-	ArtistTagCacheTTL = 7 * 24 * time.Hour
+	ArtistTagCacheTTL = 15 * 24 * time.Hour
 )
 
 // Rate limits.
