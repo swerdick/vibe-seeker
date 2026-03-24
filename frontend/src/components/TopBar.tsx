@@ -54,7 +54,7 @@ export default function TopBar({
           {vibesSyncing ? "Computing..." : "Sync Venue Vibes"}
         </button>
         {vibesComputed !== null && (
-          <span className="venue-count">{vibesComputed} vibes</span>
+          <span className="venue-count">{vibesComputed} venues updated</span>
         )}
         <button className="button button-secondary" onClick={onLogout}>
           Log out

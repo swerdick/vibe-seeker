@@ -161,7 +161,7 @@ export default function Home() {
         if (typeof data.vibes_computed === "number") setVibesComputed(data.vibes_computed);
         fetchVenues();
       })
-      .catch(() => {})
+      .catch(() => setVenueError("Failed to compute venue vibes."))
       .finally(() => setVibesSyncing(false));
   };
 

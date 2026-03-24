@@ -184,7 +184,7 @@ func (h *VibeHandler) SyncVibe(w http.ResponseWriter, r *http.Request) {
 		if len(tmTags) > 0 {
 			observability.Logger(ctx).Info("using ticketmaster classifications as fallback", "artist", name, "tags", len(tmTags))
 			artistTags[name] = tmTags
-			if cacheErr := h.TagCache.UpsertArtistTagsWithSource(tagCtx, name, tmTags, "ticketmaster"); cacheErr != nil {
+			if cacheErr := h.TagCache.UpsertArtistTagsWithSource(tagCtx, name, tmTags, store.TagSourceTicketmaster); cacheErr != nil {
 				observability.Logger(ctx).Error("failed to cache TM tags", "artist", name, "error", cacheErr)
 			}
 		} else {
@@ -200,7 +200,7 @@ func (h *VibeHandler) SyncVibe(w http.ResponseWriter, r *http.Request) {
 	dbCtx := context.WithoutCancel(ctx)
 	if err := h.Vibes.UpsertVibes(dbCtx, claims.SpotifyID, weights); err != nil {
 		httpError(w, r, http.StatusInternalServerError, "internal error",
-			"failed to persist genre weights", "error", err)
+			"failed to persist vibe weights", "error", err)
 		return
 	}
 
@@ -213,7 +213,7 @@ func (h *VibeHandler) SyncVibe(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// GetVibe returns the authenticated user's genre weights.
+// GetVibe returns the authenticated user's vibe weights.
 func (h *VibeHandler) GetVibe(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.ClaimsFromContext(r.Context())
 	if claims == nil {
@@ -224,7 +224,7 @@ func (h *VibeHandler) GetVibe(w http.ResponseWriter, r *http.Request) {
 	vibes, err := h.Vibes.GetVibes(r.Context(), claims.SpotifyID)
 	if err != nil {
 		httpError(w, r, http.StatusInternalServerError, "internal error",
-			"failed to read genre weights", "error", err)
+			"failed to read vibe weights", "error", err)
 		return
 	}
 

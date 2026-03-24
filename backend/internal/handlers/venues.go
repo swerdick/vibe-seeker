@@ -542,7 +542,7 @@ func (h *VenueHandler) computeVenueVibes(syncCtx, parentCtx context.Context, ven
 		if len(tmTags) > 0 {
 			log.Info("using ticketmaster classifications as fallback", "artist", name, "tags", len(tmTags))
 			artistTags[name] = tmTags
-			if cacheErr := h.TagCache.UpsertArtistTagsWithSource(syncCtx, name, tmTags, "ticketmaster"); cacheErr != nil {
+			if cacheErr := h.TagCache.UpsertArtistTagsWithSource(syncCtx, name, tmTags, store.TagSourceTicketmaster); cacheErr != nil {
 				log.Error("failed to cache TM tags", "artist", name, "error", cacheErr)
 			}
 		} else {
