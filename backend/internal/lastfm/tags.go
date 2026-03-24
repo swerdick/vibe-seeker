@@ -49,7 +49,7 @@ func (c *Client) FetchArtistTags(ctx context.Context, artistName string) ([]Tag,
 	// Retry with stripped diacritics if the name contains non-ASCII.
 	stripped := stripDiacritics(artistName)
 	if stripped != artistName {
-		slog.Info("retrying lastfm with stripped diacritics", "original", artistName, "stripped", stripped)
+		slog.Debug("retrying lastfm with stripped diacritics", "original", artistName, "stripped", stripped)
 		tags, err = c.fetchTags(ctx, stripped)
 		if err != nil {
 			return nil, err
@@ -90,7 +90,7 @@ func (c *Client) fetchTags(ctx context.Context, artistName string) ([]Tag, error
 	}
 
 	filtered := filterTags(result.TopTags.Tag)
-	slog.Info("lastfm tags fetched", "artist", artistName, "raw", len(result.TopTags.Tag), "filtered", len(filtered))
+	slog.Debug("lastfm tags fetched", "artist", artistName, "raw", len(result.TopTags.Tag), "filtered", len(filtered))
 	return filtered, nil
 }
 

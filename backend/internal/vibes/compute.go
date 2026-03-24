@@ -6,6 +6,12 @@ import (
 	"github.com/pseudo/vibe-seeker/backend/internal/lastfm"
 )
 
+// normalizeTag lowercases and trims a tag name to prevent duplicates
+// from different sources (e.g., Last.fm "rock" vs Ticketmaster "Rock").
+func normalizeTag(name string) string {
+	return strings.ToLower(strings.TrimSpace(name))
+}
+
 // WeightedArtist represents an artist with a pre-computed weight.
 // For user vibes, the weight comes from Spotify rank × time range multiplier.
 // For venue vibes, the weight comes from show recency.
@@ -28,7 +34,11 @@ func ComputeVibes(artistTags map[string][]lastfm.Tag, artists []WeightedArtist) 
 			continue
 		}
 		for _, t := range tags {
-			weights[t.Name] += a.Weight * (float32(t.Count) / 100.0)
+			key := normalizeTag(t.Name)
+			if key == "" {
+				continue
+			}
+			weights[key] += a.Weight * (float32(t.Count) / 100.0)
 		}
 	}
 

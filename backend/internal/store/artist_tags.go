@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -173,13 +174,16 @@ func (s *ArtistTagStore) GetClassificationsForArtist(ctx context.Context, artist
 		if err := rows.Scan(&genre, &subGenre); err != nil {
 			return nil, fmt.Errorf("scanning classification: %w", err)
 		}
-		// Add both genre and sub-genre as separate tags.
+		// Normalize casing to match Last.fm tag convention (lowercase).
+		genre = strings.ToLower(strings.TrimSpace(genre))
+		subGenre = strings.ToLower(strings.TrimSpace(subGenre))
+
 		if genre != "" && !seen[genre] {
-			tags = append(tags, lastfm.Tag{Name: genre, Count: 80}) // broad genre
+			tags = append(tags, lastfm.Tag{Name: genre, Count: 80})
 			seen[genre] = true
 		}
 		if subGenre != "" && !seen[subGenre] {
-			tags = append(tags, lastfm.Tag{Name: subGenre, Count: 60}) // narrower sub-genre
+			tags = append(tags, lastfm.Tag{Name: subGenre, Count: 60})
 			seen[subGenre] = true
 		}
 	}
