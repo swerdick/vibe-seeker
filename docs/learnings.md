@@ -54,18 +54,17 @@ Spotify top 50 and a venue's show history only gets looked up once.
 
 When you pull data from Spotify, Last.fm, and Ticketmaster, nothing agrees:
 
-- **Artist names**: Ticketmaster sends "RÜFÜS DU SOL" (with umlauts). Last.fm only recognizes "RUFUS DU SOL." Solution: 
-diacritics stripping as a retry strategy
-- **Genre taxonomy**: Last.fm uses fine-grained community tags ("dream pop", "shoegaze"). Ticketmaster uses a coarse hierarchy 
-("Music > Rock > Alternative Rock"). Solution: normalize everything to lowercase, weight Ticketmaster's broad genres lower 
-than Last.fm's specific tags
-- **Venue identity**: Ticketmaster has duplicate venue entries for the same physical location with different IDs. Solution: 
-source-prefixed IDs (`tm_`) and accepting that some duplicates slip through.
-  - As data sources expand I'll need to try to de-dupe by things like addresses, and normalized venue names, and lat/long 
-  if available
-- **Data freshness**: Spotify tokens expire hourly. Last.fm tags are stable for weeks (or probably more). Ticketmaster events 
-change daily. 
-Solution: different TTLs for different data types (tokens: refresh on use, tags: 15 days, venues: 6 hours)
+- **Artist names**: Ticketmaster sends "RÜFÜS DU SOL" (with umlauts). Last.fm only recognizes "RUFUS DU SOL." Solution:
+  diacritics stripping as a retry strategy
+- **Genre taxonomy**: Last.fm uses fine-grained community tags ("dream pop", "shoegaze"). Ticketmaster uses a coarse hierarchy
+  ("Music > Rock > Alternative Rock"). Solution: normalize everything to lowercase, weight Ticketmaster's broad genres lower
+  than Last.fm's specific tags
+- **Venue identity**: Ticketmaster has duplicate venue entries for the same physical location with different IDs. Solution:
+  source-prefixed IDs (`tm_`) and accepting that some duplicates slip through.
+  - As data sources expand I'll need to try to de-dupe by things like addresses, and normalized venue names, and lat/long
+    if available
+- **Data freshness**: Spotify tokens expire hourly. Last.fm tags are stable for weeks (or probably more). Ticketmaster events
+  change daily. Solution: different TTLs for different data types (tokens: refresh on use, tags: 15 days, venues: 6 hours)
 
 ## The Algorithm Is Simple — The Data Pipeline Is Hard
 

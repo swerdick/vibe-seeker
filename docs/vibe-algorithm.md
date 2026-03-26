@@ -18,9 +18,9 @@ A user's vibe profile is built from their Spotify top artists:
 
 1. Fetch top 50 artists for `medium_term` (~6 months) and `short_term` (~4 weeks)
 2. Each artist gets a weight based on:
-   - **Rank position**: Artist #1 gets weight 1.0, artist #50 gets 0.02 (linear decay at 0.02/position)
-   - **Time range**: Medium-term artists get 1.0× multiplier, short-term gets 0.5× (established taste outweighs recent 
-listening)
+   - **Rank position**: Artist #1 gets weight 1.0, artist #50 gets 0.02 (linear decay: `rankWeight = 1.0 - 0.02 × (rank - 1)`)
+   - **Time range**: Medium-term artists get 1.0× multiplier, short-term gets 0.5× (established taste outweighs recent
+     listening)
 3. For each artist, fetch their Last.fm tags (filtered to relevance score ≥ 20, blocklisted noise tags removed)
 4. Each tag accumulates weight across all artists: `tag_weight += artist_weight × (tag_relevance / 100)`
 5. Normalize so the strongest tag = 1.0

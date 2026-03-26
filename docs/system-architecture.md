@@ -104,8 +104,8 @@ can't exfiltrate it.
 
 - **HTTP tracing**: `otelhttp` middleware wraps all routes — automatic span generation with method, path, status, duration
 - **Database tracing**: `otelpgx` traces every SQL query with span context propagation
-- **Context-aware logging**: `observability.Logger(ctx)` extracts trace_id and span_id from the request context, attaching 
-them to every slog call. Logs from a single request can be correlated across handler → store → external API calls.
+- **Context-aware logging**: `observability.Logger(ctx)` extracts trace_id and span_id from the request context, attaching
+  them to every slog call. Logs from a single request can be correlated across handler → store → external API calls.
 - **Exporters**: OTLP gRPC to Grafana Cloud (or any OTel-compatible backend)
 
 ## Database
