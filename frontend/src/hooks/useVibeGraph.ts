@@ -130,8 +130,8 @@ export function useVibeGraph(
             prevalence: r.strength * (parent?.prevalence ?? 0.5),
             active: false,
             expanded: false,
-            x: parent?.x ? parent.x + (Math.random() - 0.5) * 40 : undefined,
-            y: parent?.y ? parent.y + (Math.random() - 0.5) * 40 : undefined,
+            x: parent?.x != null ? parent.x + (Math.random() - 0.5) * 40 : undefined,
+            y: parent?.y != null ? parent.y + (Math.random() - 0.5) * 40 : undefined,
           });
         }
       }
