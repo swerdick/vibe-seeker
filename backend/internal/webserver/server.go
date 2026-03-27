@@ -30,13 +30,14 @@ func New(cfg configuration.Config, pool *pgxpool.Pool) (*http.Server, error) {
 	}
 
 	spotifyClient := spotify.NewClient(cfg.SpotifyClientID, cfg.SpotifyClientSecret, cfg.SpotifyRedirectURI)
-	authHandler, err := handlers.NewAuthHandler(spotifyClient, userStore, cfg.JWTSecret, cfg.FrontendURL, cfg.SecureCookie)
+	authHandler, err := handlers.NewAuthHandler(spotifyClient, userStore, cfg.JWTSecret, cfg.FrontendURL, cfg.TurnstileSecretKey, cfg.SecureCookie)
 	if err != nil {
 		return nil, fmt.Errorf("creating auth handler: %w", err)
 	}
 
 	mux.HandleFunc("GET /api/auth/login", authHandler.Login)
 	mux.HandleFunc("GET /api/auth/callback", authHandler.Callback)
+	mux.HandleFunc("POST /api/auth/anonymous", authHandler.AnonymousLogin)
 	mux.HandleFunc("POST /api/auth/logout", authHandler.Logout)
 
 	// Protected routes — require a valid session cookie.
@@ -67,6 +68,13 @@ func New(cfg configuration.Config, pool *pgxpool.Pool) (*http.Server, error) {
 	mux.Handle("POST /api/venues/sync", requireAuth(http.HandlerFunc(venueHandler.SyncVenues)))
 	mux.Handle("POST /api/venues/vibes", requireAuth(http.HandlerFunc(venueHandler.SyncVenueVibes)))
 	mux.Handle("GET /api/venues", requireAuth(http.HandlerFunc(venueHandler.GetVenues)))
+
+	exploreHandler, err := handlers.NewExploreHandler(artistTagStore)
+	if err != nil {
+		return nil, fmt.Errorf("creating explore handler: %w", err)
+	}
+	mux.Handle("GET /api/vibes/top", requireAuth(http.HandlerFunc(exploreHandler.GetTopVibes)))
+	mux.Handle("GET /api/vibes/related", requireAuth(http.HandlerFunc(exploreHandler.GetRelatedVibes)))
 
 	var handler http.Handler = mux
 	handler = middleware.CORS(cfg.CORSOrigin)(handler)

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/pseudo/vibe-seeker/backend/internal/auth"
@@ -31,7 +32,7 @@ func (m *mockUserStore) UpsertUser(_ context.Context, id, displayName, _, _ stri
 func newTestHandler(t *testing.T) *AuthHandler {
 	t.Helper()
 	spotify := spotify.NewClient("client-id", "client-secret", "http://localhost:8080/api/auth/callback")
-	h, err := NewAuthHandler(spotify, &mockUserStore{}, "jwt-secret", "http://localhost:5173", false)
+	h, err := NewAuthHandler(spotify, &mockUserStore{}, "jwt-secret", "http://localhost:5173", "test-turnstile-secret", false)
 	if err != nil {
 		t.Fatalf("NewAuthHandler: %v", err)
 	}
@@ -298,7 +299,7 @@ func newTestHandlerWithMockSpotify(t *testing.T) (*AuthHandler, *mockUserStore, 
 	spotify.HTTPClient = mock.Client()
 
 	users := &mockUserStore{}
-	h, err := NewAuthHandler(spotify, users, "jwt-secret", "http://localhost:5173", false)
+	h, err := NewAuthHandler(spotify, users, "jwt-secret", "http://localhost:5173", "test-turnstile-secret", false)
 	if err != nil {
 		t.Fatalf("NewAuthHandler: %v", err)
 	}
@@ -449,7 +450,7 @@ func TestCallback_ExchangeCodeFailure(t *testing.T) {
 	spotify := spotify.NewClient("client-id", "client-secret", "http://localhost:5173/api/auth/callback")
 	spotify.TokenURL = mock.URL + "/api/token"
 	spotify.HTTPClient = mock.Client()
-	h, err := NewAuthHandler(spotify, &mockUserStore{}, "jwt-secret", "http://localhost:5173", false)
+	h, err := NewAuthHandler(spotify, &mockUserStore{}, "jwt-secret", "http://localhost:5173", "test-turnstile-secret", false)
 	if err != nil {
 		t.Fatalf("NewAuthHandler: %v", err)
 	}
@@ -528,6 +529,192 @@ func TestMe_ResponseFormat(t *testing.T) {
 
 	if body["display_name"] != "Test User" {
 		t.Errorf("display_name = %q, want %q", body["display_name"], "Test User")
+	}
+}
+
+// --- Anonymous login tests ---
+
+func newTurnstileMock(t *testing.T, success bool) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]bool{"success": success})
+	}))
+}
+
+func TestAnonymousLogin_Success(t *testing.T) {
+	mock := newTurnstileMock(t, true)
+	defer mock.Close()
+	original := TurnstileVerifyURL
+	TurnstileVerifyURL = mock.URL
+	defer func() { TurnstileVerifyURL = original }()
+
+	h := newTestHandler(t)
+
+	body := strings.NewReader(`{"turnstile_token":"test-token"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/anonymous", body)
+	rec := httptest.NewRecorder()
+
+	h.AnonymousLogin(rec, req)
+
+	res := rec.Result()
+	defer func() { _ = res.Body.Close() }()
+
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", res.StatusCode)
+	}
+
+	// Verify session cookie is set.
+	var sessionCookie *http.Cookie
+	for _, c := range res.Cookies() {
+		if c.Name == "session" {
+			sessionCookie = c
+			break
+		}
+	}
+	if sessionCookie == nil {
+		t.Fatal("expected session cookie to be set")
+	}
+
+	// Verify JWT contains anonymous ID.
+	claims, err := auth.ParseToken("jwt-secret", sessionCookie.Value)
+	if err != nil {
+		t.Fatalf("session cookie is not a valid JWT: %v", err)
+	}
+	if !strings.HasPrefix(claims.SpotifyID, "anon-") {
+		t.Errorf("expected anonymous SpotifyID prefix, got %q", claims.SpotifyID)
+	}
+	if claims.DisplayName != "Explorer" {
+		t.Errorf("DisplayName = %q, want %q", claims.DisplayName, "Explorer")
+	}
+
+	// Verify response body.
+	var respBody map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&respBody); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if respBody["display_name"] != "Explorer" {
+		t.Errorf("response display_name = %q, want %q", respBody["display_name"], "Explorer")
+	}
+}
+
+func TestAnonymousLogin_TurnstileRejected(t *testing.T) {
+	mock := newTurnstileMock(t, false)
+	defer mock.Close()
+	original := TurnstileVerifyURL
+	TurnstileVerifyURL = mock.URL
+	defer func() { TurnstileVerifyURL = original }()
+
+	h := newTestHandler(t)
+
+	body := strings.NewReader(`{"turnstile_token":"bad-token"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/anonymous", body)
+	rec := httptest.NewRecorder()
+
+	h.AnonymousLogin(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("expected status 403, got %d", rec.Code)
+	}
+}
+
+func TestAnonymousLogin_MissingToken(t *testing.T) {
+	h := newTestHandler(t)
+
+	body := strings.NewReader(`{}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/anonymous", body)
+	rec := httptest.NewRecorder()
+
+	h.AnonymousLogin(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", rec.Code)
+	}
+}
+
+func TestAnonymousLogin_CookieProperties(t *testing.T) {
+	mock := newTurnstileMock(t, true)
+	defer mock.Close()
+	original := TurnstileVerifyURL
+	TurnstileVerifyURL = mock.URL
+	defer func() { TurnstileVerifyURL = original }()
+
+	h := newTestHandler(t)
+
+	body := strings.NewReader(`{"turnstile_token":"test-token"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/anonymous", body)
+	rec := httptest.NewRecorder()
+
+	h.AnonymousLogin(rec, req)
+
+	res := rec.Result()
+	defer func() { _ = res.Body.Close() }()
+
+	var sessionCookie *http.Cookie
+	for _, c := range res.Cookies() {
+		if c.Name == "session" {
+			sessionCookie = c
+			break
+		}
+	}
+	if sessionCookie == nil {
+		t.Fatal("expected session cookie")
+	}
+	if !sessionCookie.HttpOnly {
+		t.Error("session cookie must be HttpOnly")
+	}
+	if sessionCookie.Path != "/api" {
+		t.Errorf("session cookie Path = %q, want %q", sessionCookie.Path, "/api")
+	}
+	if sessionCookie.SameSite != http.SameSiteLaxMode {
+		t.Errorf("session cookie SameSite = %d, want %d (Lax)", sessionCookie.SameSite, http.SameSiteLaxMode)
+	}
+}
+
+func TestAnonymousLogin_JWTPassesRequireAuth(t *testing.T) {
+	mock := newTurnstileMock(t, true)
+	defer mock.Close()
+	original := TurnstileVerifyURL
+	TurnstileVerifyURL = mock.URL
+	defer func() { TurnstileVerifyURL = original }()
+
+	h := newTestHandler(t)
+
+	// Get an anonymous session cookie.
+	body := strings.NewReader(`{"turnstile_token":"test-token"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/anonymous", body)
+	rec := httptest.NewRecorder()
+	h.AnonymousLogin(rec, req)
+
+	var sessionCookie *http.Cookie
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == "session" {
+			sessionCookie = c
+			break
+		}
+	}
+	if sessionCookie == nil {
+		t.Fatal("expected session cookie")
+	}
+
+	// Use the anonymous cookie to call a protected endpoint (Me).
+	meHandler := middleware.RequireAuth("jwt-secret")(http.HandlerFunc(h.Me))
+	meReq := httptest.NewRequest(http.MethodGet, "/api/auth/me", nil)
+	meReq.AddCookie(sessionCookie)
+	meRec := httptest.NewRecorder()
+
+	meHandler.ServeHTTP(meRec, meReq)
+
+	if meRec.Code != http.StatusOK {
+		t.Fatalf("expected anonymous JWT to pass RequireAuth, got status %d", meRec.Code)
+	}
+
+	var meBody map[string]string
+	if err := json.NewDecoder(meRec.Body).Decode(&meBody); err != nil {
+		t.Fatalf("failed to decode /me response: %v", err)
+	}
+	if !strings.HasPrefix(meBody["spotify_id"], "anon-") {
+		t.Errorf("expected anonymous spotify_id, got %q", meBody["spotify_id"])
 	}
 }
 

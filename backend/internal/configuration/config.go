@@ -40,21 +40,22 @@ const (
 )
 
 type Config struct {
-	Environment         string
-	LogLevel            string
-	Port                int
-	AppName             string
-	CORSOrigin          string
-	OtelEnabled         bool
-	SpotifyClientID     string
-	SpotifyClientSecret string
-	SpotifyRedirectURI  string
-	JWTSecret           string
-	FrontendURL         string
-	DatabaseURL         string
-	LastFMAPIKey        string
-	TicketmasterAPIKey  string
-	SecureCookie        bool
+	Environment          string
+	LogLevel             string
+	Port                 int
+	AppName              string
+	CORSOrigin           string
+	OtelEnabled          bool
+	SpotifyClientID      string
+	SpotifyClientSecret  string
+	SpotifyRedirectURI   string
+	JWTSecret            string
+	FrontendURL          string
+	DatabaseURL          string
+	LastFMAPIKey         string
+	TicketmasterAPIKey   string
+	TurnstileSecretKey   string
+	SecureCookie         bool
 }
 
 // NewConfig TODO: change localhost to 127.0.0.1
@@ -74,7 +75,8 @@ func NewConfig() Config {
 		DatabaseURL:         readEnvironmentVariable("DATABASE_URL", "postgres://vibe_seeker:vibe_seeker@localhost:5432/vibe_seeker?sslmode=disable"),
 		LastFMAPIKey:        readEnvironmentVariable("LASTFM_API_KEY", ""),
 		TicketmasterAPIKey:  readEnvironmentVariable("TICKETMASTER_CONSUMER_KEY", ""),
-		SecureCookie:        readEnvironmentVariable("ENVIRONMENT", "local") != "local",
+		TurnstileSecretKey: readEnvironmentVariable("TURNSTILE_SECRET_KEY", ""),
+		SecureCookie:       readEnvironmentVariable("ENVIRONMENT", "local") != "local",
 	}
 }
 
