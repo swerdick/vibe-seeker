@@ -28,7 +28,7 @@ func NewExploreHandler(tags TagReader) (*ExploreHandler, error) {
 }
 
 // GetTopVibes returns the most prevalent vibes across all cached artist data.
-// Query params: limit (default 10, max 100).
+// Query params: limit (default 10, max 500).
 func (h *ExploreHandler) GetTopVibes(w http.ResponseWriter, r *http.Request) {
 	limit := 10
 	if v := r.URL.Query().Get("limit"); v != "" {

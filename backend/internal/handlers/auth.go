@@ -207,6 +207,10 @@ func (h *AuthHandler) AnonymousLogin(w http.ResponseWriter, r *http.Request) {
 
 // verifyTurnstile validates a Turnstile token with the Cloudflare API.
 func (h *AuthHandler) verifyTurnstile(ctx context.Context, token string) error {
+	if h.TurnstileSecretKey == "" {
+		return fmt.Errorf("turnstile secret key not configured")
+	}
+
 	form := url.Values{
 		"secret":   {h.TurnstileSecretKey},
 		"response": {token},
