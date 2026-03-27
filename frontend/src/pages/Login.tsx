@@ -1,4 +1,4 @@
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, Link } from "react-router-dom";
 
 export default function Login() {
   const [searchParams] = useSearchParams();
@@ -12,6 +12,9 @@ export default function Login() {
       <a href="/api/auth/login" className="button">
         Log in with Spotify
       </a>
+      <Link to="/explore" className="button button-secondary" style={{ marginTop: "0.75rem" }}>
+        Explore without login
+      </Link>
     </div>
   );
 }

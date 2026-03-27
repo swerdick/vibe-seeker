@@ -1,10 +1,11 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import TopBar from "../components/TopBar";
 import VenueMap from "../components/VenueMap";
-import VibeSidebar from "../components/VibeSidebar";
+import VibeGraph from "../components/VibeGraph";
 import type { User, VenueData } from "../types";
-import { cosineSimilarity } from "../utils/matching";
+import { useVibeGraph } from "../hooks/useVibeGraph";
+import { useVenueMatching } from "../hooks/useVenueMatching";
 
 export default function Home() {
   const navigate = useNavigate();
@@ -20,40 +21,17 @@ export default function Home() {
   const [selectedVenue, setSelectedVenue] = useState<VenueData | null>(null);
   const [vibesSyncing, setVibesSyncing] = useState(false);
   const [vibesComputed, setVibesComputed] = useState<number | null>(null);
-  const [selectedGenres, setSelectedGenres] = useState<Set<string>>(
-    new Set(),
-  );
   const [minMatch, setMinMatch] = useState(0);
 
-  // Build filtered user vibe vector from selected genres.
-  const filteredVibes = useMemo(() => {
-    if (!genres) return {};
-    const filtered: Record<string, number> = {};
-    for (const [genre, weight] of Object.entries(genres)) {
-      if (selectedGenres.has(genre)) {
-        filtered[genre] = weight;
-      }
-    }
-    return filtered;
-  }, [genres, selectedGenres]);
+  // Graph initialized with user's Spotify vibes once loaded.
+  const graph = useVibeGraph(genres);
 
-  // Compute match scores for all venues.
-  const venueScores = useMemo(() => {
-    const scores = new Map<string, number>();
-    if (Object.keys(filteredVibes).length === 0) return scores;
-    for (const venue of venues) {
-      if (venue.vibes && Object.keys(venue.vibes).length > 0) {
-        scores.set(venue.ID, cosineSimilarity(filteredVibes, venue.vibes));
-      }
-    }
-    return scores;
-  }, [venues, filteredVibes]);
-
-  // Filter venues by minimum match threshold.
-  const visibleVenues = useMemo(() => {
-    if (minMatch <= 0) return venues;
-    return venues.filter((v) => (venueScores.get(v.ID) || 0) >= minMatch);
-  }, [venues, venueScores, minMatch]);
+  const { venueScores, visibleVenues } = useVenueMatching(
+    genres,
+    graph.selectedTags,
+    venues,
+    minMatch,
+  );
 
   // --- Data fetching ---
 
@@ -65,9 +43,6 @@ export default function Home() {
       })
       .then((data: { genres: Record<string, number>; genre_count: number }) => {
         setGenres(data.genres);
-        if (data.genres) {
-          setSelectedGenres(new Set(Object.keys(data.genres)));
-        }
       })
       .catch(() => {
         setGenres(null);
@@ -170,25 +145,6 @@ export default function Home() {
       .then(() => navigate("/", { replace: true }));
   };
 
-  // --- Genre selection ---
-
-  const toggleGenre = (genre: string) => {
-    setSelectedGenres((prev) => {
-      const next = new Set(prev);
-      if (next.has(genre)) next.delete(genre);
-      else next.add(genre);
-      return next;
-    });
-  };
-
-  const selectAllGenres = () => {
-    if (genres) setSelectedGenres(new Set(Object.keys(genres)));
-  };
-
-  const selectNoGenres = () => {
-    setSelectedGenres(new Set());
-  };
-
   // --- Render ---
 
   if (loading) {
@@ -226,12 +182,17 @@ export default function Home() {
           onClosePopup={() => setSelectedVenue(null)}
           onMinMatchChange={setMinMatch}
         />
-        <VibeSidebar
-          genres={genres}
-          selectedGenres={selectedGenres}
-          onToggleGenre={toggleGenre}
-          onSelectAll={selectAllGenres}
-          onSelectNone={selectNoGenres}
+        <VibeGraph
+          nodes={graph.nodes}
+          edges={graph.edges}
+          newNodeIds={graph.newNodeIds}
+          selectedCount={graph.selectedTags.size}
+          totalCount={graph.nodes.length}
+          onToggleNode={graph.toggleNode}
+          onAddNode={graph.addNode}
+          onReset={graph.reset}
+          onSelectAll={graph.selectAll}
+          onSelectNone={graph.selectNone}
         />
       </div>
     </div>

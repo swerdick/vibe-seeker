@@ -1,19 +1,21 @@
 interface TopBarProps {
-  displayName: string;
-  syncing: boolean;
-  vibeError: string | null;
-  venuesSyncing: boolean;
-  venueError: string | null;
-  venueCount: number | null;
-  vibesSyncing: boolean;
-  vibesComputed: number | null;
-  onSyncVibe: () => void;
-  onSyncVenues: () => void;
-  onSyncVenueVibes: () => void;
-  onLogout: () => void;
+  anonymous?: boolean;
+  displayName?: string;
+  syncing?: boolean;
+  vibeError?: string | null;
+  venuesSyncing?: boolean;
+  venueError?: string | null;
+  venueCount?: number | null;
+  vibesSyncing?: boolean;
+  vibesComputed?: number | null;
+  onSyncVibe?: () => void;
+  onSyncVenues?: () => void;
+  onSyncVenueVibes?: () => void;
+  onLogout?: () => void;
 }
 
 export default function TopBar({
+  anonymous,
   displayName,
   syncing,
   vibeError,
@@ -27,6 +29,19 @@ export default function TopBar({
   onSyncVenueVibes,
   onLogout,
 }: TopBarProps) {
+  if (anonymous) {
+    return (
+      <div className="top-bar">
+        <span className="top-bar-greeting">Vibe Seeker</span>
+        <div className="top-bar-actions">
+          <a href="/api/auth/login" className="button">
+            Connect Spotify
+          </a>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="top-bar">
       <span className="top-bar-greeting">Hello, {displayName}</span>
