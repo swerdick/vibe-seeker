@@ -79,8 +79,9 @@ export default function VibeGraph({
       const rect = el.getBoundingClientRect();
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
-      const dx = (mx - prev.x) * (1 - scaleFactor);
-      const dy = (my - prev.y) * (1 - scaleFactor);
+      const effectiveScaleFactor = newScale / prev.scale;
+      const dx = (mx - prev.x) * (1 - effectiveScaleFactor);
+      const dy = (my - prev.y) * (1 - effectiveScaleFactor);
       const next = { x: prev.x + dx, y: prev.y + dy, scale: newScale };
       transformRef.current = next;
       setTransform(next);
@@ -211,7 +212,7 @@ export default function VibeGraph({
   const resolveEdgeCoords = (edge: VibeEdge) => {
     const sourceNode = nodes.find((n) => n.id === edge.source);
     const targetNode = nodes.find((n) => n.id === edge.target);
-    if (!sourceNode?.x || !sourceNode?.y || !targetNode?.x || !targetNode?.y) {
+    if (sourceNode?.x == null || sourceNode?.y == null || targetNode?.x == null || targetNode?.y == null) {
       return null;
     }
     return {

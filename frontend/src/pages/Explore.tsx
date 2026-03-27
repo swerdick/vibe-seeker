@@ -41,7 +41,33 @@ export default function Explore() {
       return;
     }
 
-    // Prevent loading the Turnstile script twice (e.g., React StrictMode).
+    // If the script already loaded (e.g., React StrictMode re-mount), render the widget directly.
+    const turnstile = (window as unknown as Record<string, unknown>).turnstile as
+      | { render: (el: string, opts: Record<string, unknown>) => void }
+      | undefined;
+    if (turnstile) {
+      turnstile.render("#turnstile-widget", {
+        sitekey: siteKey,
+        callback: (token: string) => {
+          anonymousLogin(token)
+            .then(() => {
+              setAuthenticated(true);
+              setCaptchaLoading(false);
+            })
+            .catch(() => {
+              setCaptchaError("Verification failed. Please try again.");
+              setCaptchaLoading(false);
+            });
+        },
+        "error-callback": () => {
+          setCaptchaError("Captcha failed to load.");
+          setCaptchaLoading(false);
+        },
+      });
+      return;
+    }
+
+    // Prevent loading the Turnstile script twice.
     if (document.querySelector('script[src*="challenges.cloudflare.com/turnstile"]')) {
       return;
     }
