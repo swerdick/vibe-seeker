@@ -13,6 +13,10 @@ container_cli := env("CONTAINER_CLI", "podman")
 db:
     {{container_cli}} compose up -d postgres
 
+# Stop the database
+db-down:
+    {{container_cli}} compose stop postgres
+
 # Start all services for local development
 dev:
     {{container_cli}} compose --profile dev up
