@@ -152,6 +152,82 @@ func (s *ArtistTagStore) UpsertArtistTagsWithSource(ctx context.Context, artistN
 	return nil
 }
 
+// TagPrevalence represents a tag and its global prevalence.
+type TagPrevalence struct {
+	Tag        string  `json:"tag"`
+	Prevalence float64 `json:"prevalence"`
+}
+
+// TagRelation represents a tag related to a source tag by artist co-occurrence.
+type TagRelation struct {
+	Tag      string  `json:"tag"`
+	Strength float64 `json:"strength"`
+}
+
+// GetTopTags returns the most prevalent tags across all cached artists,
+// ranked by the number of distinct artists tagged with each.
+func (s *ArtistTagStore) GetTopTags(ctx context.Context, limit int) ([]TagPrevalence, error) {
+	rows, err := s.pool.Query(ctx, `
+		WITH ranked AS (
+			SELECT tag, COUNT(DISTINCT artist_name) AS artist_count
+			FROM artist_tags
+			GROUP BY tag
+			ORDER BY artist_count DESC
+			LIMIT $1
+		)
+		SELECT tag, artist_count::float8 / MAX(artist_count) OVER () AS prevalence
+		FROM ranked
+		ORDER BY prevalence DESC
+	`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("querying top tags: %w", err)
+	}
+	defer rows.Close()
+
+	var tags []TagPrevalence
+	for rows.Next() {
+		var t TagPrevalence
+		if err := rows.Scan(&t.Tag, &t.Prevalence); err != nil {
+			return nil, fmt.Errorf("scanning top tag: %w", err)
+		}
+		tags = append(tags, t)
+	}
+	return tags, rows.Err()
+}
+
+// GetRelatedTags returns tags that co-occur with the given tag across artists,
+// ranked by the number of shared artists.
+func (s *ArtistTagStore) GetRelatedTags(ctx context.Context, tag string, limit int) ([]TagRelation, error) {
+	rows, err := s.pool.Query(ctx, `
+		WITH co AS (
+			SELECT b.tag, COUNT(DISTINCT a.artist_name) AS shared
+			FROM artist_tags a
+			JOIN artist_tags b ON a.artist_name = b.artist_name AND a.tag != b.tag
+			WHERE a.tag = $1
+			GROUP BY b.tag
+			ORDER BY shared DESC
+			LIMIT $2
+		)
+		SELECT tag, shared::float8 / MAX(shared) OVER () AS strength
+		FROM co
+		ORDER BY strength DESC
+	`, tag, limit)
+	if err != nil {
+		return nil, fmt.Errorf("querying related tags for %q: %w", tag, err)
+	}
+	defer rows.Close()
+
+	var relations []TagRelation
+	for rows.Next() {
+		var r TagRelation
+		if err := rows.Scan(&r.Tag, &r.Strength); err != nil {
+			return nil, fmt.Errorf("scanning related tag: %w", err)
+		}
+		relations = append(relations, r)
+	}
+	return relations, rows.Err()
+}
+
 // GetClassificationsForArtist returns Ticketmaster classifications for an artist
 // by looking up their shows' classifications.
 func (s *ArtistTagStore) GetClassificationsForArtist(ctx context.Context, artistName string) ([]lastfm.Tag, error) {
