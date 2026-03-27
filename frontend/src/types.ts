@@ -11,6 +11,23 @@ export interface ShowSummary {
   url: string;
 }
 
+export interface VibeNode {
+  id: string; // tag name
+  prevalence: number; // 0-1, controls node size
+  active: boolean; // selected for matching
+  expanded: boolean; // relationships loaded
+  x?: number;
+  y?: number;
+  vx?: number;
+  vy?: number;
+}
+
+export interface VibeEdge {
+  source: string;
+  target: string;
+  strength: number; // 0-1
+}
+
 export interface VenueData {
   ID: string;
   Name: string;

@@ -110,6 +110,140 @@
   text-align: center;
 }
 
+/* Vibe Graph */
+.vibe-graph {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 1rem;
+  background-color: #1a1a1a;
+  border-left: 1px solid #333;
+}
+
+.vibe-graph h2 {
+  font-size: 1.2rem;
+  margin-bottom: 0.75rem;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.vibe-graph-search-container {
+  position: relative;
+  flex-shrink: 0;
+  margin-bottom: 0.75rem;
+}
+
+.vibe-graph-search {
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  background-color: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: #ccc;
+  font-size: 0.85rem;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.vibe-graph-search:focus {
+  border-color: #1db954;
+}
+
+.vibe-graph-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background-color: #2a2a2a;
+  border: 1px solid #444;
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  z-index: 10;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.vibe-graph-dropdown li {
+  padding: 0.4rem 0.6rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: #ccc;
+}
+
+.vibe-graph-dropdown li:hover {
+  background-color: #333;
+  color: #fff;
+}
+
+.vibe-graph-canvas {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.vibe-graph-canvas svg {
+  display: block;
+}
+
+/* Graph nodes */
+.vibe-node-group {
+  transition: opacity 0.3s;
+}
+
+.vibe-node {
+  transition: fill 0.3s;
+}
+
+.vibe-node-active {
+  fill: #1db954;
+}
+
+.vibe-node-inactive {
+  fill: #444;
+}
+
+.vibe-node-expanded-ring {
+  fill: none;
+  stroke: rgba(29, 185, 84, 0.35);
+  stroke-width: 3;
+}
+
+.vibe-node-label {
+  fill: #aaa;
+  font-size: 0.7rem;
+  pointer-events: none;
+  user-select: none;
+}
+
+.vibe-node-active + .vibe-node-label,
+.vibe-node-group:hover .vibe-node-label {
+  fill: #fff;
+}
+
+/* Graph edges */
+.vibe-edge {
+  stroke: #888;
+  stroke-width: 1;
+}
+
+/* Entrance animation — only for newly added nodes */
+@keyframes nodeAppear {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.vibe-node-entering {
+  animation: nodeAppear 0.5s ease-out;
+}
+
 /* Buttons */
 .button {
   display: inline-block;

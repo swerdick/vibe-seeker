@@ -41,6 +41,16 @@ function mockFetch(overrides: Record<string, Response | (() => Response)> = {}) 
         status: 200,
         headers: { "Content-Type": "application/json" },
       }),
+    "/api/vibes/top?limit=10": () =>
+      new Response(JSON.stringify({ vibes: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    "/api/vibes/top?limit=500": () =>
+      new Response(JSON.stringify({ vibes: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
   };
 
   const responses: Record<string, () => Response> = {};
@@ -54,8 +64,18 @@ function mockFetch(overrides: Record<string, Response | (() => Response)> = {}) 
   const mock = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
     const url =
       typeof input === "string" ? input : input instanceof URL ? input.href : (input as Request).url;
+    // Exact match first, then prefix match for parameterized URLs.
     const factory = responses[url];
     if (factory) return Promise.resolve(factory());
+    // Handle /api/vibes/related?tag=... dynamically.
+    if (url.startsWith("/api/vibes/related")) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ tag: "rock", related: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    }
     return Promise.resolve(new Response("not found", { status: 404 }));
   });
 
@@ -114,7 +134,7 @@ describe("Home", () => {
     });
   });
 
-  it("displays genres after loading vibe", async () => {
+  it("displays vibes in graph after loading", async () => {
     mockFetch({
       "/api/vibe": new Response(
         JSON.stringify({
@@ -125,9 +145,13 @@ describe("Home", () => {
       ),
     });
     renderHome();
-    await waitFor(() => {
-      expect(screen.getByText("rock")).toBeInTheDocument();
-    });
+    // Graph renders node labels as SVG text; d3-force simulation may take a tick.
+    await waitFor(
+      () => {
+        expect(screen.getByText("rock")).toBeInTheDocument();
+      },
+      { timeout: 3000 },
+    );
     expect(screen.getByText("indie")).toBeInTheDocument();
     expect(screen.getByText("dream pop")).toBeInTheDocument();
   });
@@ -160,9 +184,12 @@ describe("Home", () => {
       screen.getByRole("button", { name: /sync vibe/i }),
     );
 
-    await waitFor(() => {
-      expect(screen.getByText("rock")).toBeInTheDocument();
-    });
+    await waitFor(
+      () => {
+        expect(screen.getByText("rock")).toBeInTheDocument();
+      },
+      { timeout: 3000 },
+    );
   });
 
   it("shows error when sync fails", async () => {
