@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -75,6 +76,14 @@ func New(cfg configuration.Config, pool *pgxpool.Pool) (*http.Server, error) {
 	}
 	mux.Handle("GET /api/vibes/top", requireAuth(http.HandlerFunc(exploreHandler.GetTopVibes)))
 	mux.Handle("GET /api/vibes/related", requireAuth(http.HandlerFunc(exploreHandler.GetRelatedVibes)))
+
+	otlpRelay := handlers.NewOTLPRelayHandler(
+		os.Getenv("OTEL_RELAY_ENDPOINT"),
+		os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
+		os.Getenv("OTEL_EXPORTER_OTLP_HEADERS"),
+		cfg.OtelEnabled,
+	)
+	mux.HandleFunc("POST /api/otlp/v1/traces", otlpRelay.RelayTraces)
 
 	var handler http.Handler = mux
 	handler = middleware.CORS(cfg.CORSOrigin)(handler)
