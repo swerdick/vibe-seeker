@@ -77,6 +77,18 @@ func TestRelayTraces_FallsBackToGRPCEndpoint(t *testing.T) {
 	}
 }
 
+func TestRelayTraces_DisabledWhenNoEndpoint(t *testing.T) {
+	h := NewOTLPRelayHandler("", "", "", true)
+	req := httptest.NewRequest(http.MethodPost, "/api/otlp/v1/traces", strings.NewReader("{}"))
+	w := httptest.NewRecorder()
+
+	h.RelayTraces(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 (auto-disabled), got %d", w.Code)
+	}
+}
+
 func TestRelayTraces_OversizedBody(t *testing.T) {
 	h := NewOTLPRelayHandler("http://localhost", "", "", true)
 	bigBody := strings.Repeat("x", maxOTLPBodySize+1)
