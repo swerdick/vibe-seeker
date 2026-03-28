@@ -148,6 +148,8 @@ func TestNew_ProtectedRoutesRequireAuth(t *testing.T) {
 		{http.MethodPost, "/api/venues/sync"},
 		{http.MethodPost, "/api/venues/vibes"},
 		{http.MethodGet, "/api/venues"},
+		{http.MethodGet, "/api/vibes/top"},
+		{http.MethodGet, "/api/vibes/related"},
 	}
 
 	for _, tt := range tests {
