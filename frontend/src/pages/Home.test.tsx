@@ -2,6 +2,8 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { AuthProvider } from "../contexts/AuthContext";
+import ProtectedRoute from "../components/ProtectedRoute";
 import Home from "./Home";
 
 beforeEach(() => {
@@ -15,10 +17,14 @@ afterEach(() => {
 function renderHome() {
   return render(
     <MemoryRouter initialEntries={["/home"]}>
-      <Routes>
-        <Route path="/" element={<p>login page</p>} />
-        <Route path="/home" element={<Home />} />
-      </Routes>
+      <AuthProvider>
+        <Routes>
+          <Route path="/" element={<p>login page</p>} />
+          <Route element={<ProtectedRoute />}>
+            <Route path="/home" element={<Home />} />
+          </Route>
+        </Routes>
+      </AuthProvider>
     </MemoryRouter>,
   );
 }

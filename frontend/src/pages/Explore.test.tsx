@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { AuthProvider } from "../contexts/AuthContext";
 import Explore from "./Explore";
 
 beforeEach(() => {
@@ -14,9 +15,11 @@ afterEach(() => {
 function renderExplore() {
   return render(
     <MemoryRouter initialEntries={["/explore"]}>
-      <Routes>
-        <Route path="/explore" element={<Explore />} />
-      </Routes>
+      <AuthProvider>
+        <Routes>
+          <Route path="/explore" element={<Explore />} />
+        </Routes>
+      </AuthProvider>
     </MemoryRouter>,
   );
 }
