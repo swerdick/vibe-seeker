@@ -309,6 +309,16 @@ export default function VibeGraph({
                   className={`vibe-node-group ${isNew ? "vibe-node-entering" : ""}`}
                   transform={`translate(${node.x},${node.y})`}
                   onClick={() => onToggleNode(node.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onToggleNode(node.id);
+                    }
+                  }}
+                  role="checkbox"
+                  aria-checked={node.active}
+                  aria-label={node.id}
+                  tabIndex={0}
                   style={{ cursor: "pointer" }}
                 >
                   {/* Main circle */}
