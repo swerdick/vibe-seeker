@@ -1,3 +1,5 @@
+name: vibe-seeker
+
 services:
   postgres:
     image: postgres:18-bookworm
@@ -15,6 +17,17 @@ services:
       timeout: 5s
       retries: 5
 
+  # Local OTLP collector with trace UI (dev only)
+  jaeger:
+    profiles: ["dev"]
+    image: docker.io/jaegertracing/all-in-one:latest
+    ports:
+      - "16686:16686" # UI
+      - "4317:4317"   # OTLP gRPC (backend SDK)
+      - "4318:4318"   # OTLP HTTP (browser relay)
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+
   # Dev services: source-mounted, native toolchain, hot reload
   backend-dev:
     profiles: ["dev"]
@@ -29,6 +42,8 @@ services:
       - ./backend/.env
     environment:
       DATABASE_URL: postgres://vibe_seeker:vibe_seeker@postgres:5432/vibe_seeker?sslmode=disable
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_RELAY_ENDPOINT: http://jaeger:4318
     depends_on:
       postgres:
         condition: service_healthy
