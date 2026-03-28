@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"log/slog"
@@ -29,6 +30,10 @@ func NewOTLPRelayHandler(relayEndpoint, grpcEndpoint, headers string, enabled bo
 	if endpoint == "" {
 		endpoint = grpcEndpoint
 	}
+	if enabled && endpoint == "" {
+		slog.Warn("otlp relay: enabled but no endpoint configured, disabling")
+		enabled = false
+	}
 	h := &OTLPRelayHandler{
 		endpoint: strings.TrimRight(endpoint, "/"),
 		headers:  parseOTLPHeaders(headers),
@@ -56,7 +61,7 @@ func (h *OTLPRelayHandler) RelayTraces(w http.ResponseWriter, r *http.Request) {
 	}
 
 	url := h.endpoint + "/v1/traces"
-	upstream, err := http.NewRequestWithContext(r.Context(), http.MethodPost, url, strings.NewReader(string(body)))
+	upstream, err := http.NewRequestWithContext(r.Context(), http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		slog.Error("otlp relay: failed to create upstream request", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
