@@ -1,3 +1,5 @@
+import type { User, VenueData } from "../types";
+
 interface TagPrevalence {
   tag: string;
   prevalence: number;
@@ -6,6 +8,46 @@ interface TagPrevalence {
 interface TagRelation {
   tag: string;
   strength: number;
+}
+
+export async function fetchAuthMe(): Promise<User> {
+  const res = await fetch("/api/auth/me", { credentials: "include" });
+  if (!res.ok) throw new Error("unauthorized");
+  return res.json();
+}
+
+export async function postLogout(): Promise<void> {
+  await fetch("/api/auth/logout", {
+    method: "POST",
+    credentials: "include",
+  });
+}
+
+export async function fetchVibe(): Promise<{
+  genres: Record<string, number>;
+  genre_count: number;
+}> {
+  const res = await fetch("/api/vibe", { credentials: "include" });
+  if (!res.ok) throw new Error("failed to load vibe");
+  return res.json();
+}
+
+export async function fetchVenues(): Promise<{
+  venues: VenueData[];
+  count: number;
+}> {
+  const res = await fetch("/api/venues", { credentials: "include" });
+  if (!res.ok) throw new Error("failed to load venues");
+  return res.json();
+}
+
+export async function postSync(url: string): Promise<unknown> {
+  const res = await fetch(url, {
+    method: "POST",
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error("sync failed");
+  return res.json();
 }
 
 export async function fetchTopVibes(
