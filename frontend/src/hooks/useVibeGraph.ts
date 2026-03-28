@@ -111,7 +111,7 @@ export function useVibeGraph(
   );
 
   // Expand a node — works directly on ref arrays to avoid d3 tick race.
-  const expandRef = useRef<(id: string) => Promise<void>>(undefined);
+  const expandRef = useRef<((id: string) => Promise<void>) | undefined>(undefined);
   useEffect(() => {
     expandRef.current = async (id: string) => {
     try {

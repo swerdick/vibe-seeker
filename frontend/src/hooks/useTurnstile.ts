@@ -62,40 +62,39 @@ export function useTurnstile({
       "error-callback": onError,
     };
 
-    // If the script already loaded (e.g., React StrictMode re-mount), render the widget directly.
-    const turnstile = (window as unknown as Record<string, unknown>).turnstile as
-      | { render: (el: string, opts: Record<string, unknown>) => void }
-      | undefined;
-    if (turnstile) {
-      turnstile.render("#turnstile-widget", renderOpts);
-      return;
-    }
+    const win = window as unknown as Record<string, unknown>;
 
-    // Prevent loading the Turnstile script twice.
-    if (document.querySelector('script[src*="challenges.cloudflare.com/turnstile"]')) {
-      return;
-    }
-
-    const script = document.createElement("script");
-    script.src =
-      "https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onTurnstileLoad";
-    script.async = true;
-
-    (window as unknown as Record<string, unknown>).onTurnstileLoad = () => {
-      const ts = (window as unknown as Record<string, unknown>).turnstile as {
-        render: (
-          el: string,
-          opts: {
-            sitekey: string;
-            callback: (token: string) => void;
-            "error-callback": () => void;
-          },
-        ) => void;
-      };
-      ts.render("#turnstile-widget", renderOpts);
+    const handleLoad = () => {
+      const ts = win.turnstile as
+        | { render: (el: string, opts: Record<string, unknown>) => void }
+        | undefined;
+      if (ts) ts.render("#turnstile-widget", renderOpts);
     };
 
-    document.head.appendChild(script);
+    // If the script already loaded (e.g., React StrictMode re-mount), render the widget directly.
+    if (win.turnstile) {
+      handleLoad();
+      return;
+    }
+
+    // Always register the onload callback so the widget renders when the script finishes,
+    // even if the script tag was already added by a previous mount.
+    win.onTurnstileLoad = handleLoad;
+
+    // Only append the script tag if it doesn't already exist.
+    if (!document.querySelector('script[src*="challenges.cloudflare.com/turnstile"]')) {
+      const script = document.createElement("script");
+      script.src =
+        "https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onTurnstileLoad";
+      script.async = true;
+      document.head.appendChild(script);
+    }
+
+    return () => {
+      if (win.onTurnstileLoad === handleLoad) {
+        delete win.onTurnstileLoad;
+      }
+    };
   }, [enabled]);
 
   return { authenticated, loading, error };
