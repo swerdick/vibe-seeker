@@ -83,7 +83,7 @@ func New(cfg configuration.Config, pool *pgxpool.Pool) (*http.Server, error) {
 		os.Getenv("OTEL_EXPORTER_OTLP_HEADERS"),
 		cfg.OtelEnabled,
 	)
-	mux.HandleFunc("POST /api/otlp/v1/traces", otlpRelay.RelayTraces)
+	mux.Handle("POST /api/otlp/v1/traces", requireAuth(http.HandlerFunc(otlpRelay.RelayTraces)))
 
 	var handler http.Handler = mux
 	handler = middleware.CORS(cfg.CORSOrigin)(handler)

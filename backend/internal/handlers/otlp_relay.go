@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -96,7 +95,7 @@ func parseOTLPHeaders(raw string) map[string]string {
 	for _, pair := range strings.Split(raw, ",") {
 		k, v, ok := strings.Cut(pair, "=")
 		if !ok {
-			slog.Warn(fmt.Sprintf("otlp relay: ignoring malformed header %q", pair))
+			slog.Warn("otlp relay: ignoring malformed header", "pair", pair)
 			continue
 		}
 		headers[strings.TrimSpace(k)] = strings.TrimSpace(v)
