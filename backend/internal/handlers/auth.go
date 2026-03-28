@@ -28,6 +28,10 @@ type UserUpserter interface {
 // Exported so tests can override it with a mock server.
 var TurnstileVerifyURL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
 
+// errTurnstileRejected indicates Cloudflare explicitly rejected the token.
+// Other verifyTurnstile errors (network, decode, misconfiguration) are server-side.
+var errTurnstileRejected = errors.New("turnstile token rejected")
+
 type AuthHandler struct {
 	Spotify            *spotify.Client
 	Users              UserUpserter
@@ -169,8 +173,13 @@ func (h *AuthHandler) AnonymousLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.verifyTurnstile(r.Context(), body.TurnstileToken); err != nil {
-		httpError(w, r, http.StatusForbidden, "captcha verification failed",
-			"turnstile verification failed", "error", err)
+		if errors.Is(err, errTurnstileRejected) {
+			httpError(w, r, http.StatusForbidden, "captcha verification failed",
+				"turnstile token rejected", "error", err)
+		} else {
+			httpError(w, r, http.StatusInternalServerError, "captcha verification failed",
+				"turnstile verification error", "error", err)
+		}
 		return
 	}
 
@@ -236,7 +245,7 @@ func (h *AuthHandler) verifyTurnstile(ctx context.Context, token string) error {
 	}
 
 	if !result.Success {
-		return fmt.Errorf("turnstile token rejected")
+		return errTurnstileRejected
 	}
 	return nil
 }
