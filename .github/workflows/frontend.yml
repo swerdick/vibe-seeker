@@ -64,6 +64,17 @@ jobs:
 
       - uses: github/codeql-action/analyze@v4
 
+  frontend-ok:
+    if: always()
+    needs: [ci, codeql]
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          if [[ "${{ needs.ci.result }}" != "success" || "${{ needs.codeql.result }}" != "success" ]]; then
+            echo "CI or CodeQL failed"
+            exit 1
+          fi
+
   # TODO: Add E2E tests after Playwright is set up (see 13-testing.md)
   # e2e:
   #   needs: [ci]

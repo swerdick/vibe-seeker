@@ -48,6 +48,17 @@ jobs:
       #   with:
       #     dockerfile: backend/Containerfile
 
+  backend-ok:
+    if: always()
+    needs: [ci, codeql]
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          if [[ "${{ needs.ci.result }}" != "success" || "${{ needs.codeql.result }}" != "success" ]]; then
+            echo "CI or CodeQL failed"
+            exit 1
+          fi
+
   codeql:
     name: CodeQL (Go)
     runs-on: ubuntu-latest
