@@ -26,7 +26,7 @@ jobs:
           go-version: '1.26'
           cache-dependency-path: backend/go.sum
 
-      - uses: extractions/setup-just@v3
+      - uses: extractions/setup-just@v4
 
       - name: Install tools
         run: |
