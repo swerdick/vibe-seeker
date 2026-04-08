@@ -82,7 +82,7 @@ func newTestVibeService(t *testing.T) (*VibeService, *mockVibeStore) {
 	cache.cached["artist two"] = []lastfm.Tag{{Name: "indie", Count: 80}}
 	cache.cached["artist three"] = []lastfm.Tag{{Name: "jazz", Count: 70}}
 
-	enricher := NewTagEnricher(&mockLastFM{}, cache)
+	enricher, _ := NewTagEnricher(&mockLastFM{}, cache)
 	vibeStore := &mockVibeStore{}
 
 	svc, err := NewVibeService(sp,
@@ -137,7 +137,8 @@ func TestSyncVibe_TokenRefresh(t *testing.T) {
 	cache := newMockTagCache()
 	cache.cached["a"] = []lastfm.Tag{{Name: "rock", Count: 100}}
 
-	svc, _ := NewVibeService(sp, tokenStore, &mockVibeStore{}, NewTagEnricher(&mockLastFM{}, cache))
+	enricher, _ := NewTagEnricher(&mockLastFM{}, cache)
+	svc, _ := NewVibeService(sp, tokenStore, &mockVibeStore{}, enricher)
 
 	_, err := svc.SyncVibe(context.Background(), "user1")
 	if err != nil {
@@ -152,6 +153,7 @@ func TestSyncVibe_TokenRefresh(t *testing.T) {
 func TestSyncVibe_SpotifyError(t *testing.T) {
 	sp := &mockSpotifyVibe{fetchErr: errors.New("spotify down")}
 	cache := newMockTagCache()
+	enricher, _ := NewTagEnricher(&mockLastFM{}, cache)
 
 	svc, _ := NewVibeService(sp,
 		&mockTokenStore{tokens: &store.UserTokens{
@@ -159,7 +161,7 @@ func TestSyncVibe_SpotifyError(t *testing.T) {
 			TokenExpiry: int(time.Now().Unix()) + 3600,
 		}},
 		&mockVibeStore{},
-		NewTagEnricher(&mockLastFM{}, cache),
+		enricher,
 	)
 
 	_, err := svc.SyncVibe(context.Background(), "user1")
@@ -175,13 +177,14 @@ func TestGetVibe_Success(t *testing.T) {
 	sp := &mockSpotifyVibe{}
 	vibeStore := &mockVibeStore{getVibes: map[string]float32{"rock": 1.0, "indie": 0.7}}
 	cache := newMockTagCache()
+	enricher, _ := NewTagEnricher(&mockLastFM{}, cache)
 	svc2, _ := NewVibeService(sp,
 		&mockTokenStore{tokens: &store.UserTokens{
 			AccessToken: "t", RefreshToken: "r",
 			TokenExpiry: int(time.Now().Unix()) + 3600,
 		}},
 		vibeStore,
-		NewTagEnricher(&mockLastFM{}, cache),
+		enricher,
 	)
 	_ = svc // silence unused
 
@@ -197,13 +200,14 @@ func TestGetVibe_Success(t *testing.T) {
 func TestGetVibe_Error(t *testing.T) {
 	sp := &mockSpotifyVibe{}
 	cache := newMockTagCache()
+	enricher, _ := NewTagEnricher(&mockLastFM{}, cache)
 	svc, _ := NewVibeService(sp,
 		&mockTokenStore{tokens: &store.UserTokens{
 			AccessToken: "t", RefreshToken: "r",
 			TokenExpiry: int(time.Now().Unix()) + 3600,
 		}},
 		&mockVibeStore{getErr: errors.New("db error")},
-		NewTagEnricher(&mockLastFM{}, cache),
+		enricher,
 	)
 
 	_, err := svc.GetVibe(context.Background(), "user1")
@@ -214,7 +218,7 @@ func TestGetVibe_Error(t *testing.T) {
 
 func TestNewVibeService_NilDeps(t *testing.T) {
 	cache := newMockTagCache()
-	enricher := NewTagEnricher(&mockLastFM{}, cache)
+	enricher, _ := NewTagEnricher(&mockLastFM{}, cache)
 	tokens := &mockTokenStore{tokens: &store.UserTokens{}}
 	vibes := &mockVibeStore{}
 	sp := &mockSpotifyVibe{}
