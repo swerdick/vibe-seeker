@@ -1,4 +1,4 @@
-# ADR-001: Deployment Architecture
+# ADR 001: Deployment Architecture
 
 **Status:** Amended
 **Date:** 2026-04-05 (originally 2026-03-27)
