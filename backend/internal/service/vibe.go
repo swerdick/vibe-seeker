@@ -152,8 +152,13 @@ func (s *VibeService) ensureValidToken(ctx context.Context, userID string) (stri
 			return "", err
 		}
 
+		refreshToken := tokens.RefreshToken
+		if refreshed.RefreshToken != "" {
+			refreshToken = refreshed.RefreshToken
+		}
+
 		newExpiry := int(time.Now().Unix()) + refreshed.ExpiresIn
-		if err := s.tokens.UpdateTokens(ctx, userID, refreshed.AccessToken, refreshed.RefreshToken, newExpiry); err != nil {
+		if err := s.tokens.UpdateTokens(ctx, userID, refreshed.AccessToken, refreshToken, newExpiry); err != nil {
 			return "", err
 		}
 
