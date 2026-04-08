@@ -125,7 +125,7 @@ func TestGetVibe_Success(t *testing.T) {
 
 	vibes, ok := body["vibes"].(map[string]interface{})
 	if !ok {
-		t.Fatal("expected genres map in response")
+		t.Fatal("expected vibes map in response")
 	}
 	if vibes["rock"] == nil {
 		t.Error("expected 'rock' in vibes")

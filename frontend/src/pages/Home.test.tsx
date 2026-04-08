@@ -162,7 +162,7 @@ describe("Home", () => {
     expect(screen.getByText("dream pop")).toBeInTheDocument();
   });
 
-  it("calls sync endpoint and refreshes genres on click", async () => {
+  it("calls sync endpoint and refreshes vibes on click", async () => {
     let vibeCalls = 0;
     mockFetch({
       "/api/vibe": () => {
