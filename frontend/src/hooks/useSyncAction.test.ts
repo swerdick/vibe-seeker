@@ -15,7 +15,7 @@ function mockFetch(response: Response) {
 describe("useSyncAction", () => {
   it("executes POST and returns result", async () => {
     mockFetch(
-      new Response(JSON.stringify({ synced: true, genre_count: 5 }), {
+      new Response(JSON.stringify({ synced: true, vibe_count: 5 }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       }),
@@ -23,7 +23,7 @@ describe("useSyncAction", () => {
     const refetch = vi.fn();
 
     const { result } = renderHook(() =>
-      useSyncAction<{ genre_count: number }>("/api/vibe/sync", {
+      useSyncAction<{ vibe_count: number }>("/api/vibe/sync", {
         errorMessage: "Sync failed.",
         refetch,
       }),
@@ -35,7 +35,7 @@ describe("useSyncAction", () => {
     await waitFor(() => {
       expect(result.current.syncing).toBe(false);
     });
-    expect(result.current.result?.genre_count).toBe(5);
+    expect(result.current.result?.vibe_count).toBe(5);
     expect(result.current.error).toBeNull();
     expect(refetch).toHaveBeenCalled();
   });

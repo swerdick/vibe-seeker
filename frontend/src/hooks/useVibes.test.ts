@@ -15,7 +15,7 @@ function mockFetch(vibeResponse: Response) {
 describe("useVibes", () => {
   it("does not fetch when disabled", () => {
     const spy = mockFetch(
-      new Response(JSON.stringify({ genres: { rock: 1 }, genre_count: 1 }), {
+      new Response(JSON.stringify({ vibes: { rock: 1 }, vibe_count: 1 }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       }),
@@ -24,10 +24,10 @@ describe("useVibes", () => {
     expect(spy).not.toHaveBeenCalled();
   });
 
-  it("fetches genres when enabled", async () => {
+  it("fetches vibes when enabled", async () => {
     mockFetch(
       new Response(
-        JSON.stringify({ genres: { rock: 1.0, indie: 0.5 }, genre_count: 2 }),
+        JSON.stringify({ vibes: { rock: 1.0, indie: 0.5 }, vibe_count: 2 }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       ),
     );
@@ -36,7 +36,7 @@ describe("useVibes", () => {
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
     });
-    expect(result.current.genres).toEqual({ rock: 1.0, indie: 0.5 });
+    expect(result.current.vibes).toEqual({ rock: 1.0, indie: 0.5 });
     expect(result.current.error).toBeNull();
   });
 
@@ -47,7 +47,7 @@ describe("useVibes", () => {
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
     });
-    expect(result.current.genres).toBeNull();
+    expect(result.current.vibes).toBeNull();
     expect(result.current.error).toBeTruthy();
   });
 });
