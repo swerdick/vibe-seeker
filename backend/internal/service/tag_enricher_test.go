@@ -60,7 +60,7 @@ func TestEnrich_CacheHit(t *testing.T) {
 	cache := newMockTagCache()
 	cache.cached["artist one"] = []lastfm.Tag{{Name: "rock", Count: 100}}
 
-	enricher := NewTagEnricher(&mockLastFM{}, cache)
+	enricher, _ := NewTagEnricher(&mockLastFM{}, cache)
 	result := enricher.Enrich(context.Background(), []string{"artist one"}, 10*time.Millisecond)
 
 	if result.CacheHits != 1 {
@@ -79,7 +79,7 @@ func TestEnrich_LastFMFetch(t *testing.T) {
 	}
 	cache := newMockTagCache()
 
-	enricher := NewTagEnricher(lfm, cache)
+	enricher, _ := NewTagEnricher(lfm, cache)
 	result := enricher.Enrich(context.Background(), []string{"artist two"}, 10*time.Millisecond)
 
 	if result.CacheHits != 0 {
@@ -99,7 +99,7 @@ func TestEnrich_TMFallback(t *testing.T) {
 	cache := newMockTagCache()
 	cache.classifications["artist three"] = []lastfm.Tag{{Name: "pop", Count: 80}}
 
-	enricher := NewTagEnricher(lfm, cache)
+	enricher, _ := NewTagEnricher(lfm, cache)
 	result := enricher.Enrich(context.Background(), []string{"artist three"}, 10*time.Millisecond)
 
 	if len(result.ArtistTags["artist three"]) != 1 {
@@ -114,7 +114,7 @@ func TestEnrich_LastFMError(t *testing.T) {
 	lfm := &mockLastFM{err: errors.New("api error")}
 	cache := newMockTagCache()
 
-	enricher := NewTagEnricher(lfm, cache)
+	enricher, _ := NewTagEnricher(lfm, cache)
 	result := enricher.Enrich(context.Background(), []string{"artist four"}, 10*time.Millisecond)
 
 	if len(result.ArtistTags) != 0 {
@@ -132,7 +132,7 @@ func TestEnrich_ContextCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately
 
-	enricher := NewTagEnricher(lfm, cache)
+	enricher, _ := NewTagEnricher(lfm, cache)
 	result := enricher.Enrich(ctx, []string{"a", "b"}, 10*time.Millisecond)
 
 	// With a canceled context, should not fetch any tags.
@@ -151,7 +151,7 @@ func TestEnrich_MixedCacheAndFetch(t *testing.T) {
 		},
 	}
 
-	enricher := NewTagEnricher(lfm, cache)
+	enricher, _ := NewTagEnricher(lfm, cache)
 	result := enricher.Enrich(context.Background(), []string{"cached-artist", "new-artist"}, 10*time.Millisecond)
 
 	if result.CacheHits != 1 {
@@ -159,5 +159,26 @@ func TestEnrich_MixedCacheAndFetch(t *testing.T) {
 	}
 	if len(result.ArtistTags) != 2 {
 		t.Errorf("expected 2 artist tags, got %d", len(result.ArtistTags))
+	}
+}
+
+func TestNewTagEnricher_NilDeps(t *testing.T) {
+	cache := newMockTagCache()
+	lfm := &mockLastFM{}
+
+	tests := []struct {
+		name  string
+		lfm   LastFMClient
+		cache TagCache
+	}{
+		{"nil lastfm", nil, cache},
+		{"nil cache", lfm, nil},
+	}
+
+	for _, tt := range tests {
+		_, err := NewTagEnricher(tt.lfm, tt.cache)
+		if err == nil {
+			t.Errorf("%s: expected error", tt.name)
+		}
 	}
 }
