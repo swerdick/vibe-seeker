@@ -13,6 +13,7 @@ import (
 	"github.com/pseudo/vibe-seeker/backend/internal/handlers"
 	"github.com/pseudo/vibe-seeker/backend/internal/lastfm"
 	"github.com/pseudo/vibe-seeker/backend/internal/middleware"
+	"github.com/pseudo/vibe-seeker/backend/internal/service"
 	"github.com/pseudo/vibe-seeker/backend/internal/spotify"
 	"github.com/pseudo/vibe-seeker/backend/internal/store"
 	"github.com/pseudo/vibe-seeker/backend/internal/ticketmaster"
@@ -25,13 +26,50 @@ func New(cfg configuration.Config, pool *pgxpool.Pool) (*http.Server, error) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", handlers.HealthCheck)
 
+	// --- Stores ---
 	userStore, err := store.NewUserStore(pool)
 	if err != nil {
 		return nil, fmt.Errorf("creating user store: %w", err)
 	}
+	artistTagStore, err := store.NewArtistTagStore(pool)
+	if err != nil {
+		return nil, fmt.Errorf("creating artist tag store: %w", err)
+	}
+	venueStore, err := store.NewVenueStore(pool)
+	if err != nil {
+		return nil, fmt.Errorf("creating venue store: %w", err)
+	}
 
+	// --- API Clients ---
 	spotifyClient := spotify.NewClient(cfg.SpotifyClientID, cfg.SpotifyClientSecret, cfg.SpotifyRedirectURI)
-	authHandler, err := handlers.NewAuthHandler(spotifyClient, userStore, cfg.JWTSecret, cfg.FrontendURL, cfg.TurnstileSecretKey, cfg.SecureCookie)
+	lastfmClient := lastfm.NewClient(cfg.LastFMAPIKey)
+	tmClient := ticketmaster.NewClient(cfg.TicketmasterAPIKey)
+
+	// --- Services ---
+	tagEnricher := service.NewTagEnricher(lastfmClient, artistTagStore)
+
+	authSvc, err := service.NewAuthService(spotifyClient, userStore, cfg.JWTSecret, cfg.TurnstileSecretKey)
+	if err != nil {
+		return nil, fmt.Errorf("creating auth service: %w", err)
+	}
+
+	vibeSvc, err := service.NewVibeService(spotifyClient, userStore, userStore, tagEnricher)
+	if err != nil {
+		return nil, fmt.Errorf("creating vibe service: %w", err)
+	}
+
+	venueSvc, err := service.NewVenueService(tmClient, venueStore, tagEnricher)
+	if err != nil {
+		return nil, fmt.Errorf("creating venue service: %w", err)
+	}
+
+	exploreSvc, err := service.NewExploreService(artistTagStore)
+	if err != nil {
+		return nil, fmt.Errorf("creating explore service: %w", err)
+	}
+
+	// --- Handlers ---
+	authHandler, err := handlers.NewAuthHandler(spotifyClient, authSvc, cfg.FrontendURL, cfg.SecureCookie)
 	if err != nil {
 		return nil, fmt.Errorf("creating auth handler: %w", err)
 	}
@@ -45,24 +83,14 @@ func New(cfg configuration.Config, pool *pgxpool.Pool) (*http.Server, error) {
 	requireAuth := middleware.RequireAuth(cfg.JWTSecret)
 	mux.Handle("GET /api/auth/me", requireAuth(http.HandlerFunc(authHandler.Me)))
 
-	lastfmClient := lastfm.NewClient(cfg.LastFMAPIKey)
-	artistTagStore, err := store.NewArtistTagStore(pool)
-	if err != nil {
-		return nil, fmt.Errorf("creating artist tag store: %w", err)
-	}
-	vibeHandler, err := handlers.NewVibeHandler(spotifyClient, lastfmClient, userStore, userStore, artistTagStore)
+	vibeHandler, err := handlers.NewVibeHandler(vibeSvc)
 	if err != nil {
 		return nil, fmt.Errorf("creating vibe handler: %w", err)
 	}
 	mux.Handle("POST /api/vibe/sync", requireAuth(http.HandlerFunc(vibeHandler.SyncVibe)))
 	mux.Handle("GET /api/vibe", requireAuth(http.HandlerFunc(vibeHandler.GetVibe)))
 
-	tmClient := ticketmaster.NewClient(cfg.TicketmasterAPIKey)
-	venueStore, err := store.NewVenueStore(pool)
-	if err != nil {
-		return nil, fmt.Errorf("creating venue store: %w", err)
-	}
-	venueHandler, err := handlers.NewVenueHandler(tmClient, lastfmClient, venueStore, artistTagStore)
+	venueHandler, err := handlers.NewVenueHandler(venueSvc)
 	if err != nil {
 		return nil, fmt.Errorf("creating venue handler: %w", err)
 	}
@@ -70,7 +98,7 @@ func New(cfg configuration.Config, pool *pgxpool.Pool) (*http.Server, error) {
 	mux.Handle("POST /api/venues/vibes", requireAuth(http.HandlerFunc(venueHandler.SyncVenueVibes)))
 	mux.Handle("GET /api/venues", requireAuth(http.HandlerFunc(venueHandler.GetVenues)))
 
-	exploreHandler, err := handlers.NewExploreHandler(artistTagStore)
+	exploreHandler, err := handlers.NewExploreHandler(exploreSvc)
 	if err != nil {
 		return nil, fmt.Errorf("creating explore handler: %w", err)
 	}

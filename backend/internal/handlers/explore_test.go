@@ -10,29 +10,29 @@ import (
 	"github.com/pseudo/vibe-seeker/backend/internal/store"
 )
 
-type mockTagReader struct {
-	topTags     []store.TagPrevalence
-	relatedTags []store.TagRelation
+type mockExploreService struct {
+	topVibes    []store.TagPrevalence
 	topErr      error
+	relatedTags []store.TagRelation
 	relatedErr  error
 	lastTag     string
 	lastLimit   int
 }
 
-func (m *mockTagReader) GetTopTags(_ context.Context, limit int) ([]store.TagPrevalence, error) {
+func (m *mockExploreService) GetTopVibes(_ context.Context, limit int) ([]store.TagPrevalence, error) {
 	m.lastLimit = limit
-	return m.topTags, m.topErr
+	return m.topVibes, m.topErr
 }
 
-func (m *mockTagReader) GetRelatedTags(_ context.Context, tag string, limit int) ([]store.TagRelation, error) {
+func (m *mockExploreService) GetRelatedVibes(_ context.Context, tag string, limit int) ([]store.TagRelation, error) {
 	m.lastTag = tag
 	m.lastLimit = limit
 	return m.relatedTags, m.relatedErr
 }
 
 func TestGetTopVibes_DefaultLimit(t *testing.T) {
-	mock := &mockTagReader{
-		topTags: []store.TagPrevalence{
+	mock := &mockExploreService{
+		topVibes: []store.TagPrevalence{
 			{Tag: "rock", Prevalence: 1.0},
 			{Tag: "indie", Prevalence: 0.85},
 		},
@@ -70,7 +70,7 @@ func TestGetTopVibes_DefaultLimit(t *testing.T) {
 }
 
 func TestGetTopVibes_CustomLimit(t *testing.T) {
-	mock := &mockTagReader{topTags: []store.TagPrevalence{}}
+	mock := &mockExploreService{topVibes: []store.TagPrevalence{}}
 	h, _ := NewExploreHandler(mock)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/vibes/top?limit=25", nil)
@@ -84,7 +84,7 @@ func TestGetTopVibes_CustomLimit(t *testing.T) {
 }
 
 func TestGetTopVibes_LimitCapped(t *testing.T) {
-	mock := &mockTagReader{topTags: []store.TagPrevalence{}}
+	mock := &mockExploreService{topVibes: []store.TagPrevalence{}}
 	h, _ := NewExploreHandler(mock)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/vibes/top?limit=999", nil)
@@ -99,7 +99,7 @@ func TestGetTopVibes_LimitCapped(t *testing.T) {
 }
 
 func TestGetRelatedVibes_Success(t *testing.T) {
-	mock := &mockTagReader{
+	mock := &mockExploreService{
 		relatedTags: []store.TagRelation{
 			{Tag: "indie", Strength: 1.0},
 			{Tag: "alternative", Strength: 0.75},
@@ -123,8 +123,8 @@ func TestGetRelatedVibes_Success(t *testing.T) {
 	}
 
 	var body struct {
-		Tag     string               `json:"tag"`
-		Related []store.TagRelation  `json:"related"`
+		Tag     string              `json:"tag"`
+		Related []store.TagRelation `json:"related"`
 	}
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
@@ -138,7 +138,7 @@ func TestGetRelatedVibes_Success(t *testing.T) {
 }
 
 func TestGetRelatedVibes_MissingTag(t *testing.T) {
-	h, _ := NewExploreHandler(&mockTagReader{})
+	h, _ := NewExploreHandler(&mockExploreService{})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/vibes/related", nil)
 	rec := httptest.NewRecorder()
@@ -150,9 +150,9 @@ func TestGetRelatedVibes_MissingTag(t *testing.T) {
 	}
 }
 
-func TestNewExploreHandler_NilTagReader(t *testing.T) {
+func TestNewExploreHandler_NilService(t *testing.T) {
 	_, err := NewExploreHandler(nil)
 	if err == nil {
-		t.Error("expected error for nil tag reader")
+		t.Error("expected error for nil explore service")
 	}
 }

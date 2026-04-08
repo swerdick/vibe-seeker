@@ -10,21 +10,21 @@ import (
 	"github.com/pseudo/vibe-seeker/backend/internal/store"
 )
 
-// TagReader provides read access to global tag data for the explore graph.
-type TagReader interface {
-	GetTopTags(ctx context.Context, limit int) ([]store.TagPrevalence, error)
-	GetRelatedTags(ctx context.Context, tag string, limit int) ([]store.TagRelation, error)
+// VibeExplorer provides tag exploration operations.
+type VibeExplorer interface {
+	GetTopVibes(ctx context.Context, limit int) ([]store.TagPrevalence, error)
+	GetRelatedVibes(ctx context.Context, tag string, limit int) ([]store.TagRelation, error)
 }
 
 type ExploreHandler struct {
-	Tags TagReader
+	explore VibeExplorer
 }
 
-func NewExploreHandler(tags TagReader) (*ExploreHandler, error) {
-	if tags == nil {
-		return nil, errors.New("explore: nil tag reader")
+func NewExploreHandler(explore VibeExplorer) (*ExploreHandler, error) {
+	if explore == nil {
+		return nil, errors.New("explore: nil explore service")
 	}
-	return &ExploreHandler{Tags: tags}, nil
+	return &ExploreHandler{explore: explore}, nil
 }
 
 // GetTopVibes returns the most prevalent vibes across all cached artist data.
@@ -37,7 +37,7 @@ func (h *ExploreHandler) GetTopVibes(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	tags, err := h.Tags.GetTopTags(r.Context(), limit)
+	tags, err := h.explore.GetTopVibes(r.Context(), limit)
 	if err != nil {
 		httpError(w, r, http.StatusInternalServerError, "failed to fetch vibes",
 			"failed to query top tags", "error", err)
@@ -66,7 +66,7 @@ func (h *ExploreHandler) GetRelatedVibes(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	related, err := h.Tags.GetRelatedTags(r.Context(), tag, limit)
+	related, err := h.explore.GetRelatedVibes(r.Context(), tag, limit)
 	if err != nil {
 		httpError(w, r, http.StatusInternalServerError, "failed to fetch related vibes",
 			"failed to query related tags", "error", err, "tag", tag)

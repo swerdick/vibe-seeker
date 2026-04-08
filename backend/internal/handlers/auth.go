@@ -2,59 +2,45 @@ package handlers
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/url"
-	"strings"
-	"time"
 
 	"github.com/pseudo/vibe-seeker/backend/internal/auth"
 	"github.com/pseudo/vibe-seeker/backend/internal/configuration"
 	"github.com/pseudo/vibe-seeker/backend/internal/middleware"
 	"github.com/pseudo/vibe-seeker/backend/internal/observability"
+	"github.com/pseudo/vibe-seeker/backend/internal/service"
 	"github.com/pseudo/vibe-seeker/backend/internal/spotify"
 )
 
-// UserUpserter persists user data on login.
-type UserUpserter interface {
-	UpsertUser(ctx context.Context, id, displayName, accessToken, refreshToken string, tokenExpiry int) error
+// Authenticator handles the business logic of user authentication.
+type Authenticator interface {
+	LoginWithSpotify(ctx context.Context, code string) (*service.LoginResult, error)
+	LoginAnonymous(ctx context.Context, turnstileToken string) (*service.LoginResult, error)
 }
 
-// TurnstileVerifyURL is the Cloudflare Turnstile verification endpoint.
-// Exported so tests can override it with a mock server.
-var TurnstileVerifyURL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
-
-// errTurnstileRejected indicates Cloudflare explicitly rejected the token.
-// Other verifyTurnstile errors (network, decode, misconfiguration) are server-side.
-var errTurnstileRejected = errors.New("turnstile token rejected")
-
+// AuthHandler handles HTTP authentication endpoints.
 type AuthHandler struct {
-	Spotify            *spotify.Client
-	Users              UserUpserter
-	JWTSecret          string
-	FrontendURL        string
-	TurnstileSecretKey string
-	SecureCookie       bool
+	auth         Authenticator
+	spotify      *spotify.Client // only for AuthorizeURL in Login
+	frontendURL  string
+	secureCookie bool
 }
 
-func NewAuthHandler(spotify *spotify.Client, users UserUpserter, jwtSecret, frontendURL, turnstileSecretKey string, secureCookie bool) (*AuthHandler, error) {
-	if spotify == nil {
+func NewAuthHandler(sp *spotify.Client, authSvc Authenticator, frontendURL string, secureCookie bool) (*AuthHandler, error) {
+	if sp == nil {
 		return nil, errors.New("auth: nil spotify client")
 	}
-	if users == nil {
-		return nil, errors.New("auth: nil user store")
+	if authSvc == nil {
+		return nil, errors.New("auth: nil auth service")
 	}
 	return &AuthHandler{
-		Spotify:            spotify,
-		Users:              users,
-		JWTSecret:          jwtSecret,
-		FrontendURL:        frontendURL,
-		TurnstileSecretKey: turnstileSecretKey,
-		SecureCookie:       secureCookie,
+		auth:         authSvc,
+		spotify:      sp,
+		frontendURL:  frontendURL,
+		secureCookie: secureCookie,
 	}, nil
 }
 
@@ -75,7 +61,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 	})
 
-	http.Redirect(w, r, h.Spotify.AuthorizeURL(state), http.StatusFound)
+	http.Redirect(w, r, h.spotify.AuthorizeURL(state), http.StatusFound)
 }
 
 func (h *AuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
@@ -95,7 +81,7 @@ func (h *AuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 
 	if errParam := r.URL.Query().Get("error"); errParam != "" {
 		observability.Logger(r.Context()).Error("spotify auth error", "error", errParam)
-		http.Redirect(w, r, h.FrontendURL+"/?error="+url.QueryEscape(errParam), http.StatusFound)
+		http.Redirect(w, r, h.frontendURL+"/?error="+url.QueryEscape(errParam), http.StatusFound)
 		return
 	}
 
@@ -105,45 +91,15 @@ func (h *AuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokenResp, err := h.Spotify.ExchangeCode(r.Context(), code)
+	result, err := h.auth.LoginWithSpotify(r.Context(), code)
 	if err != nil {
-		httpError(w, r, http.StatusInternalServerError, "failed to exchange code",
-			"failed to exchange code", "error", err)
+		httpError(w, r, http.StatusInternalServerError, "failed to complete login",
+			"spotify login failed", "error", err)
 		return
 	}
 
-	profile, err := h.Spotify.FetchProfile(r.Context(), tokenResp.AccessToken)
-	if err != nil {
-		httpError(w, r, http.StatusInternalServerError, "failed to fetch profile",
-			"failed to fetch profile", "error", err)
-		return
-	}
-
-	tokenExpiry := int(time.Now().Unix()) + tokenResp.ExpiresIn
-	if err := h.Users.UpsertUser(r.Context(), profile.ID, profile.DisplayName, tokenResp.AccessToken, tokenResp.RefreshToken, tokenExpiry); err != nil {
-		httpError(w, r, http.StatusInternalServerError, "internal error",
-			"failed to persist user", "error", err)
-		return
-	}
-
-	jwt, err := auth.CreateToken(h.JWTSecret, profile.ID, profile.DisplayName)
-	if err != nil {
-		httpError(w, r, http.StatusInternalServerError, "internal error",
-			"failed to create token", "error", err)
-		return
-	}
-
-	http.SetCookie(w, &http.Cookie{
-		Name:     "session",
-		Value:    jwt,
-		Path:     "/api",
-		MaxAge:   configuration.SessionCookieMaxAge,
-		HttpOnly: true,
-		Secure:   h.SecureCookie,
-		SameSite: http.SameSiteLaxMode,
-	})
-
-	http.Redirect(w, r, h.FrontendURL+"/callback", http.StatusFound)
+	h.setSessionCookie(w, result.JWT)
+	http.Redirect(w, r, h.frontendURL+"/callback", http.StatusFound)
 }
 
 // Me returns the authenticated user's identity from the JWT claims.
@@ -162,7 +118,7 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 }
 
 // AnonymousLogin validates a Cloudflare Turnstile token and issues a
-// session cookie with an anonymous JWT. No user row is created.
+// session cookie with an anonymous JWT.
 func (h *AuthHandler) AnonymousLogin(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		TurnstileToken string `json:"turnstile_token"`
@@ -172,8 +128,9 @@ func (h *AuthHandler) AnonymousLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.verifyTurnstile(r.Context(), body.TurnstileToken); err != nil {
-		if errors.Is(err, errTurnstileRejected) {
+	result, err := h.auth.LoginAnonymous(r.Context(), body.TurnstileToken)
+	if err != nil {
+		if errors.Is(err, service.ErrTurnstileRejected) {
 			httpError(w, r, http.StatusForbidden, "captcha verification failed",
 				"turnstile token rejected", "error", err)
 		} else {
@@ -183,80 +140,13 @@ func (h *AuthHandler) AnonymousLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	anonID, err := generateAnonymousID()
-	if err != nil {
-		httpError(w, r, http.StatusInternalServerError, "internal error",
-			"failed to generate anonymous id", "error", err)
-		return
-	}
-
-	jwt, err := auth.CreateToken(h.JWTSecret, anonID, "Explorer")
-	if err != nil {
-		httpError(w, r, http.StatusInternalServerError, "internal error",
-			"failed to create anonymous token", "error", err)
-		return
-	}
-
-	http.SetCookie(w, &http.Cookie{
-		Name:     "session",
-		Value:    jwt,
-		Path:     "/api",
-		MaxAge:   configuration.SessionCookieMaxAge,
-		HttpOnly: true,
-		Secure:   h.SecureCookie,
-		SameSite: http.SameSiteLaxMode,
-	})
+	h.setSessionCookie(w, result.JWT)
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{
-		"spotify_id":   anonID,
-		"display_name": "Explorer",
+		"spotify_id":   result.UserID,
+		"display_name": result.DisplayName,
 	})
-}
-
-// verifyTurnstile validates a Turnstile token with the Cloudflare API.
-func (h *AuthHandler) verifyTurnstile(ctx context.Context, token string) error {
-	if h.TurnstileSecretKey == "" {
-		return fmt.Errorf("turnstile secret key not configured")
-	}
-
-	form := url.Values{
-		"secret":   {h.TurnstileSecretKey},
-		"response": {token},
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, TurnstileVerifyURL, strings.NewReader(form.Encode()))
-	if err != nil {
-		return fmt.Errorf("creating turnstile request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("calling turnstile API: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	var result struct {
-		Success bool `json:"success"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return fmt.Errorf("decoding turnstile response: %w", err)
-	}
-
-	if !result.Success {
-		return errTurnstileRejected
-	}
-	return nil
-}
-
-// generateAnonymousID creates a random anonymous user identifier.
-func generateAnonymousID() (string, error) {
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return "anon-" + hex.EncodeToString(b), nil
 }
 
 // Logout clears the session cookie.
@@ -267,9 +157,21 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		Path:     "/api",
 		MaxAge:   -1,
 		HttpOnly: true,
-		Secure:   h.SecureCookie,
+		Secure:   h.secureCookie,
 		SameSite: http.SameSiteLaxMode,
 	})
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *AuthHandler) setSessionCookie(w http.ResponseWriter, jwt string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     "session",
+		Value:    jwt,
+		Path:     "/api",
+		MaxAge:   configuration.SessionCookieMaxAge,
+		HttpOnly: true,
+		Secure:   h.secureCookie,
+		SameSite: http.SameSiteLaxMode,
+	})
 }

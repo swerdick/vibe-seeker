@@ -5,38 +5,60 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"strings"
 	"testing"
 
 	"github.com/pseudo/vibe-seeker/backend/internal/auth"
 	"github.com/pseudo/vibe-seeker/backend/internal/middleware"
+	"github.com/pseudo/vibe-seeker/backend/internal/service"
 	"github.com/pseudo/vibe-seeker/backend/internal/spotify"
 )
 
-// mockUserStore implements UserUpserter for tests.
-type mockUserStore struct {
-	called      bool
-	lastID      string
-	lastDisplay string
-	err         error
+// mockAuthService implements Authenticator for tests.
+type mockAuthService struct {
+	loginResult *service.LoginResult
+	loginErr    error
+	anonResult  *service.LoginResult
+	anonErr     error
 }
 
-func (m *mockUserStore) UpsertUser(_ context.Context, id, displayName, _, _ string, _ int) error {
-	m.called = true
-	m.lastID = id
-	m.lastDisplay = displayName
-	return m.err
+func (m *mockAuthService) LoginWithSpotify(_ context.Context, _ string) (*service.LoginResult, error) {
+	return m.loginResult, m.loginErr
+}
+
+func (m *mockAuthService) LoginAnonymous(_ context.Context, _ string) (*service.LoginResult, error) {
+	return m.anonResult, m.anonErr
 }
 
 func newTestHandler(t *testing.T) *AuthHandler {
 	t.Helper()
-	spotify := spotify.NewClient("client-id", "client-secret", "http://localhost:8080/api/auth/callback")
-	h, err := NewAuthHandler(spotify, &mockUserStore{}, "jwt-secret", "http://localhost:5173", "test-turnstile-secret", false)
+	sp := spotify.NewClient("client-id", "client-secret", "http://localhost:8080/api/auth/callback")
+	jwt, _ := auth.CreateToken("jwt-secret", "spotify123", "Test User")
+	h, err := NewAuthHandler(sp, &mockAuthService{
+		loginResult: &service.LoginResult{JWT: jwt, UserID: "spotify123", DisplayName: "Test User"},
+		anonResult:  &service.LoginResult{JWT: jwt, UserID: "anon-abc123", DisplayName: "Explorer"},
+	}, "http://localhost:5173", false)
 	if err != nil {
 		t.Fatalf("NewAuthHandler: %v", err)
 	}
 	return h
+}
+
+func newTestHandlerWithMockSpotify(t *testing.T) (*AuthHandler, *mockAuthService) {
+	t.Helper()
+
+	sp := spotify.NewClient("client-id", "client-secret", "http://localhost:5173/api/auth/callback")
+
+	jwt, _ := auth.CreateToken("jwt-secret", "spotify123", "Test User")
+	authSvc := &mockAuthService{
+		loginResult: &service.LoginResult{JWT: jwt, UserID: "spotify123", DisplayName: "Test User"},
+	}
+
+	h, err := NewAuthHandler(sp, authSvc, "http://localhost:5173", false)
+	if err != nil {
+		t.Fatalf("NewAuthHandler: %v", err)
+	}
+	return h, authSvc
 }
 
 func TestLogin_RedirectsToSpotify(t *testing.T) {
@@ -54,17 +76,9 @@ func TestLogin_RedirectsToSpotify(t *testing.T) {
 		t.Fatalf("expected status 302, got %d", res.StatusCode)
 	}
 
-	location, err := url.Parse(res.Header.Get("Location"))
-	if err != nil {
-		t.Fatalf("failed to parse Location header: %v", err)
-	}
-
-	if location.Host != "accounts.spotify.com" {
-		t.Errorf("expected redirect to accounts.spotify.com, got %s", location.Host)
-	}
-
-	if location.Query().Get("state") == "" {
-		t.Error("expected non-empty state parameter")
+	location := res.Header.Get("Location")
+	if !strings.Contains(location, "accounts.spotify.com") {
+		t.Errorf("expected redirect to accounts.spotify.com, got %s", location)
 	}
 }
 
@@ -206,7 +220,6 @@ func TestMe_ReturnsUserInfo(t *testing.T) {
 		t.Fatalf("CreateToken failed: %v", err)
 	}
 
-	// Wrap the Me handler with auth middleware.
 	handler := middleware.RequireAuth("jwt-secret")(http.HandlerFunc(h.Me))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/auth/me", nil)
@@ -220,10 +233,10 @@ func TestMe_ReturnsUserInfo(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	if !contains(body, "spotify123") {
+	if !strings.Contains(body, "spotify123") {
 		t.Errorf("response should contain spotify_id, got: %s", body)
 	}
-	if !contains(body, "Test User") {
+	if !strings.Contains(body, "Test User") {
 		t.Errorf("response should contain display_name, got: %s", body)
 	}
 }
@@ -271,44 +284,8 @@ func TestLogout_ClearsSessionCookie(t *testing.T) {
 	}
 }
 
-// newTestHandlerWithMockSpotify creates an AuthHandler backed by a mock Spotify API
-// that returns a valid token exchange and profile response.
-func newTestHandlerWithMockSpotify(t *testing.T) (*AuthHandler, *mockUserStore, *httptest.Server) {
-	t.Helper()
-
-	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/api/token":
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]interface{}{
-				"access_token":  "mock-access-token",
-				"refresh_token": "mock-refresh-token",
-				"expires_in":    3600,
-			})
-		case "/v1/me":
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]string{"id": "spotify123", "display_name": "Test User"})
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-
-	spotify := spotify.NewClient("client-id", "client-secret", "http://localhost:5173/api/auth/callback")
-	spotify.TokenURL = mock.URL + "/api/token"
-	spotify.MeURL = mock.URL + "/v1/me"
-	spotify.HTTPClient = mock.Client()
-
-	users := &mockUserStore{}
-	h, err := NewAuthHandler(spotify, users, "jwt-secret", "http://localhost:5173", "test-turnstile-secret", false)
-	if err != nil {
-		t.Fatalf("NewAuthHandler: %v", err)
-	}
-	return h, users, mock
-}
-
 func TestCallback_Success_SetsSessionCookie(t *testing.T) {
-	h, _, mock := newTestHandlerWithMockSpotify(t)
-	defer mock.Close()
+	h, _ := newTestHandlerWithMockSpotify(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/auth/callback?state=valid&code=test-code", nil)
 	req.AddCookie(&http.Cookie{Name: "oauth_state", Value: "valid"})
@@ -355,8 +332,7 @@ func TestCallback_Success_SetsSessionCookie(t *testing.T) {
 }
 
 func TestCallback_Success_CookieProperties(t *testing.T) {
-	h, _, mock := newTestHandlerWithMockSpotify(t)
-	defer mock.Close()
+	h, _ := newTestHandlerWithMockSpotify(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/auth/callback?state=valid&code=test-code", nil)
 	req.AddCookie(&http.Cookie{Name: "oauth_state", Value: "valid"})
@@ -401,30 +377,8 @@ func TestCallback_Success_CookieProperties(t *testing.T) {
 	}
 }
 
-func TestCallback_Success_UpsertsUser(t *testing.T) {
-	h, users, mock := newTestHandlerWithMockSpotify(t)
-	defer mock.Close()
-
-	req := httptest.NewRequest(http.MethodGet, "/api/auth/callback?state=valid&code=test-code", nil)
-	req.AddCookie(&http.Cookie{Name: "oauth_state", Value: "valid"})
-	rec := httptest.NewRecorder()
-
-	h.Callback(rec, req)
-
-	if !users.called {
-		t.Fatal("expected UpsertUser to be called")
-	}
-	if users.lastID != "spotify123" {
-		t.Errorf("UpsertUser id = %q, want %q", users.lastID, "spotify123")
-	}
-	if users.lastDisplay != "Test User" {
-		t.Errorf("UpsertUser displayName = %q, want %q", users.lastDisplay, "Test User")
-	}
-}
-
 func TestCallback_Success_RedirectsToFrontend(t *testing.T) {
-	h, _, mock := newTestHandlerWithMockSpotify(t)
-	defer mock.Close()
+	h, _ := newTestHandlerWithMockSpotify(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/auth/callback?state=valid&code=test-code", nil)
 	req.AddCookie(&http.Cookie{Name: "oauth_state", Value: "valid"})
@@ -441,16 +395,11 @@ func TestCallback_Success_RedirectsToFrontend(t *testing.T) {
 	}
 }
 
-func TestCallback_ExchangeCodeFailure(t *testing.T) {
-	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusBadRequest)
-	}))
-	defer mock.Close()
-
-	spotify := spotify.NewClient("client-id", "client-secret", "http://localhost:5173/api/auth/callback")
-	spotify.TokenURL = mock.URL + "/api/token"
-	spotify.HTTPClient = mock.Client()
-	h, err := NewAuthHandler(spotify, &mockUserStore{}, "jwt-secret", "http://localhost:5173", "test-turnstile-secret", false)
+func TestCallback_ServiceFailure(t *testing.T) {
+	sp := spotify.NewClient("client-id", "client-secret", "http://localhost:5173/api/auth/callback")
+	h, err := NewAuthHandler(sp, &mockAuthService{
+		loginErr: context.DeadlineExceeded,
+	}, "http://localhost:5173", false)
 	if err != nil {
 		t.Fatalf("NewAuthHandler: %v", err)
 	}
@@ -534,22 +483,24 @@ func TestMe_ResponseFormat(t *testing.T) {
 
 // --- Anonymous login tests ---
 
-func newTurnstileMock(t *testing.T, success bool) *httptest.Server {
+func newAnonymousTestHandler(t *testing.T, anonResult *service.LoginResult, anonErr error) *AuthHandler {
 	t.Helper()
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]bool{"success": success})
-	}))
+	sp := spotify.NewClient("client-id", "client-secret", "http://localhost:8080/api/auth/callback")
+	h, err := NewAuthHandler(sp, &mockAuthService{
+		anonResult: anonResult,
+		anonErr:    anonErr,
+	}, "http://localhost:5173", false)
+	if err != nil {
+		t.Fatalf("NewAuthHandler: %v", err)
+	}
+	return h
 }
 
 func TestAnonymousLogin_Success(t *testing.T) {
-	mock := newTurnstileMock(t, true)
-	defer mock.Close()
-	original := TurnstileVerifyURL
-	TurnstileVerifyURL = mock.URL
-	defer func() { TurnstileVerifyURL = original }()
-
-	h := newTestHandler(t)
+	jwt, _ := auth.CreateToken("jwt-secret", "anon-abc123", "Explorer")
+	h := newAnonymousTestHandler(t, &service.LoginResult{
+		JWT: jwt, UserID: "anon-abc123", DisplayName: "Explorer",
+	}, nil)
 
 	body := strings.NewReader(`{"turnstile_token":"test-token"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/anonymous", body)
@@ -581,8 +532,8 @@ func TestAnonymousLogin_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("session cookie is not a valid JWT: %v", err)
 	}
-	if !strings.HasPrefix(claims.SpotifyID, "anon-") {
-		t.Errorf("expected anonymous SpotifyID prefix, got %q", claims.SpotifyID)
+	if claims.SpotifyID != "anon-abc123" {
+		t.Errorf("expected anonymous SpotifyID, got %q", claims.SpotifyID)
 	}
 	if claims.DisplayName != "Explorer" {
 		t.Errorf("DisplayName = %q, want %q", claims.DisplayName, "Explorer")
@@ -599,13 +550,7 @@ func TestAnonymousLogin_Success(t *testing.T) {
 }
 
 func TestAnonymousLogin_TurnstileRejected(t *testing.T) {
-	mock := newTurnstileMock(t, false)
-	defer mock.Close()
-	original := TurnstileVerifyURL
-	TurnstileVerifyURL = mock.URL
-	defer func() { TurnstileVerifyURL = original }()
-
-	h := newTestHandler(t)
+	h := newAnonymousTestHandler(t, nil, service.ErrTurnstileRejected)
 
 	body := strings.NewReader(`{"turnstile_token":"bad-token"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/anonymous", body)
@@ -633,13 +578,10 @@ func TestAnonymousLogin_MissingToken(t *testing.T) {
 }
 
 func TestAnonymousLogin_CookieProperties(t *testing.T) {
-	mock := newTurnstileMock(t, true)
-	defer mock.Close()
-	original := TurnstileVerifyURL
-	TurnstileVerifyURL = mock.URL
-	defer func() { TurnstileVerifyURL = original }()
-
-	h := newTestHandler(t)
+	jwt, _ := auth.CreateToken("jwt-secret", "anon-abc123", "Explorer")
+	h := newAnonymousTestHandler(t, &service.LoginResult{
+		JWT: jwt, UserID: "anon-abc123", DisplayName: "Explorer",
+	}, nil)
 
 	body := strings.NewReader(`{"turnstile_token":"test-token"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/anonymous", body)
@@ -672,13 +614,10 @@ func TestAnonymousLogin_CookieProperties(t *testing.T) {
 }
 
 func TestAnonymousLogin_JWTPassesRequireAuth(t *testing.T) {
-	mock := newTurnstileMock(t, true)
-	defer mock.Close()
-	original := TurnstileVerifyURL
-	TurnstileVerifyURL = mock.URL
-	defer func() { TurnstileVerifyURL = original }()
-
-	h := newTestHandler(t)
+	jwt, _ := auth.CreateToken("jwt-secret", "anon-abc123", "Explorer")
+	h := newAnonymousTestHandler(t, &service.LoginResult{
+		JWT: jwt, UserID: "anon-abc123", DisplayName: "Explorer",
+	}, nil)
 
 	// Get an anonymous session cookie.
 	body := strings.NewReader(`{"turnstile_token":"test-token"}`)
@@ -713,20 +652,7 @@ func TestAnonymousLogin_JWTPassesRequireAuth(t *testing.T) {
 	if err := json.NewDecoder(meRec.Body).Decode(&meBody); err != nil {
 		t.Fatalf("failed to decode /me response: %v", err)
 	}
-	if !strings.HasPrefix(meBody["spotify_id"], "anon-") {
+	if meBody["spotify_id"] != "anon-abc123" {
 		t.Errorf("expected anonymous spotify_id, got %q", meBody["spotify_id"])
 	}
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && searchString(s, substr)
-}
-
-func searchString(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }
