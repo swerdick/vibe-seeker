@@ -84,7 +84,7 @@ func TestSyncVenues_TTLSkip(t *testing.T) {
 	vs := &mockVenueStore2{fetchedAt: &recent}
 
 	cache := newMockTagCache()
-	enricher := NewTagEnricher(&mockLastFM{}, cache)
+	enricher, _ := NewTagEnricher(&mockLastFM{}, cache)
 
 	svc, err := NewVenueService(&mockTicketmaster{}, vs, enricher)
 	if err != nil {
@@ -118,7 +118,7 @@ func TestSyncVenueVibes_Success(t *testing.T) {
 
 	cache := newMockTagCache()
 	cache.cached["artist one"] = []lastfm.Tag{{Name: "rock", Count: 100}}
-	enricher := NewTagEnricher(&mockLastFM{}, cache)
+	enricher, _ := NewTagEnricher(&mockLastFM{}, cache)
 
 	svc, err := NewVenueService(&mockTicketmaster{}, vs, enricher)
 	if err != nil {
@@ -153,7 +153,7 @@ func TestGetVenues_Success(t *testing.T) {
 	}
 
 	cache := newMockTagCache()
-	enricher := NewTagEnricher(&mockLastFM{}, cache)
+	enricher, _ := NewTagEnricher(&mockLastFM{}, cache)
 
 	svc, _ := NewVenueService(&mockTicketmaster{}, vs, enricher)
 
@@ -179,7 +179,7 @@ func TestGetVenues_Success(t *testing.T) {
 func TestGetVenues_Empty(t *testing.T) {
 	vs := &mockVenueStore2{venues: []store.Venue{}}
 	cache := newMockTagCache()
-	enricher := NewTagEnricher(&mockLastFM{}, cache)
+	enricher, _ := NewTagEnricher(&mockLastFM{}, cache)
 
 	svc, _ := NewVenueService(&mockTicketmaster{}, vs, enricher)
 
@@ -195,7 +195,7 @@ func TestGetVenues_Empty(t *testing.T) {
 
 func TestNewVenueService_NilDeps(t *testing.T) {
 	cache := newMockTagCache()
-	enricher := NewTagEnricher(&mockLastFM{}, cache)
+	enricher, _ := NewTagEnricher(&mockLastFM{}, cache)
 	tm := &mockTicketmaster{}
 	vs := &mockVenueStore2{}
 

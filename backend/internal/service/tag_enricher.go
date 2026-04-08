@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 
@@ -38,8 +39,14 @@ type EnrichResult struct {
 }
 
 // NewTagEnricher creates a TagEnricher with the given Last.fm client and cache.
-func NewTagEnricher(lfm LastFMClient, cache TagCache) *TagEnricher {
-	return &TagEnricher{lastFM: lfm, tagCache: cache}
+func NewTagEnricher(lfm LastFMClient, cache TagCache) (*TagEnricher, error) {
+	if lfm == nil {
+		return nil, errors.New("tag enricher: nil lastfm client")
+	}
+	if cache == nil {
+		return nil, errors.New("tag enricher: nil tag cache")
+	}
+	return &TagEnricher{lastFM: lfm, tagCache: cache}, nil
 }
 
 // Enrich fetches tags for each artist name using the cache-first strategy.

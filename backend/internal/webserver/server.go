@@ -46,7 +46,10 @@ func New(cfg configuration.Config, pool *pgxpool.Pool) (*http.Server, error) {
 	tmClient := ticketmaster.NewClient(cfg.TicketmasterAPIKey)
 
 	// --- Services ---
-	tagEnricher := service.NewTagEnricher(lastfmClient, artistTagStore)
+	tagEnricher, err := service.NewTagEnricher(lastfmClient, artistTagStore)
+	if err != nil {
+		return nil, fmt.Errorf("creating tag enricher: %w", err)
+	}
 
 	authSvc, err := service.NewAuthService(spotifyClient, userStore, cfg.JWTSecret, cfg.TurnstileSecretKey)
 	if err != nil {
