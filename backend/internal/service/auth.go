@@ -143,6 +143,10 @@ func (s *AuthService) verifyTurnstile(ctx context.Context, token string) error {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("turnstile API returned HTTP %d", resp.StatusCode)
+	}
+
 	var result struct {
 		Success bool `json:"success"`
 	}
