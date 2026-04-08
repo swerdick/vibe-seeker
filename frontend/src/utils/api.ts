@@ -24,8 +24,8 @@ export async function postLogout(): Promise<void> {
 }
 
 export async function fetchVibe(): Promise<{
-  genres: Record<string, number>;
-  genre_count: number;
+  vibes: Record<string, number>;
+  vibe_count: number;
 }> {
   const res = await fetch("/api/vibe", { credentials: "include" });
   if (!res.ok) throw new Error("failed to load vibe");

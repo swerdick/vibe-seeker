@@ -24,16 +24,16 @@ export default function Home() {
       ? selectedVenue
       : null;
 
-  const graph = useVibeGraph(vibes.genres);
+  const graph = useVibeGraph(vibes.vibes);
 
   const { venueScores, visibleVenues } = useVenueMatching(
-    vibes.genres,
+    vibes.vibes,
     graph.selectedTags,
     venues.venues,
     minMatch,
   );
 
-  const vibeSync = useSyncAction<{ genre_count: number }>(
+  const vibeSync = useSyncAction<{ vibe_count: number }>(
     "/api/vibe/sync",
     { errorMessage: "Failed to sync vibe from Spotify.", refetch: vibes.refetch },
   );

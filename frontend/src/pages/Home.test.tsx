@@ -38,7 +38,7 @@ function mockFetch(overrides: Record<string, Response | (() => Response)> = {}) 
         { status: 200, headers: { "Content-Type": "application/json" } },
       ),
     "/api/vibe": () =>
-      new Response(JSON.stringify({ genres: {}, genre_count: 0 }), {
+      new Response(JSON.stringify({ vibes: {}, vibe_count: 0 }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       }),
@@ -144,8 +144,8 @@ describe("Home", () => {
     mockFetch({
       "/api/vibe": new Response(
         JSON.stringify({
-          genres: { rock: 1.0, indie: 0.7, "dream pop": 0.3 },
-          genre_count: 3,
+          vibes: { rock: 1.0, indie: 0.7, "dream pop": 0.3 },
+          vibe_count: 3,
         }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       ),
@@ -167,14 +167,14 @@ describe("Home", () => {
     mockFetch({
       "/api/vibe": () => {
         vibeCalls++;
-        const genres = vibeCalls > 1 ? { rock: 1.0, indie: 0.5 } : {};
+        const vibeData = vibeCalls > 1 ? { rock: 1.0, indie: 0.5 } : {};
         return new Response(
-          JSON.stringify({ genres, genre_count: Object.keys(genres).length }),
+          JSON.stringify({ vibes: vibeData, vibe_count: Object.keys(vibeData).length }),
           { status: 200, headers: { "Content-Type": "application/json" } },
         );
       },
       "/api/vibe/sync": new Response(
-        JSON.stringify({ synced: true, genre_count: 2 }),
+        JSON.stringify({ synced: true, vibe_count: 2 }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       ),
     });

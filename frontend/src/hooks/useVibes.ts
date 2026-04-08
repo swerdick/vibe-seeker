@@ -2,14 +2,14 @@ import { useState, useEffect, useCallback } from "react";
 import { fetchVibe } from "../utils/api";
 
 interface UseVibesResult {
-  genres: Record<string, number> | null;
+  vibes: Record<string, number> | null;
   loading: boolean;
   error: string | null;
   refetch: () => void;
 }
 
 export function useVibes(enabled: boolean): UseVibesResult {
-  const [genres, setGenres] = useState<Record<string, number> | null>(null);
+  const [vibes, setVibes] = useState<Record<string, number> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [fetchKey, setFetchKey] = useState(0);
@@ -20,14 +20,14 @@ export function useVibes(enabled: boolean): UseVibesResult {
     fetchVibe()
       .then((data) => {
         if (!cancelled) {
-          setGenres(data.genres);
+          setVibes(data.vibes);
           setError(null);
           setPending(false);
         }
       })
       .catch(() => {
         if (!cancelled) {
-          setGenres(null);
+          setVibes(null);
           setError("Failed to load vibes.");
           setPending(false);
         }
@@ -43,7 +43,7 @@ export function useVibes(enabled: boolean): UseVibesResult {
     setFetchKey((k) => k + 1);
   }, []);
 
-  const loading = pending || (enabled && genres === null && error === null);
+  const loading = pending || (enabled && vibes === null && error === null);
 
-  return { genres, loading, error, refetch };
+  return { vibes, loading, error, refetch };
 }
