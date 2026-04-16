@@ -41,12 +41,13 @@ resource "aws_iam_role_policy" "api_lambda" {
 resource "aws_lambda_function" "api" {
   function_name = "${var.project}-api"
   role          = aws_iam_role.api_lambda.arn
-  package_type  = "Image"
-  # Placeholder image for initial creation. The deploy-backend workflow
-  # replaces this with the real image on first push to main.
-  image_uri     = "public.ecr.aws/lambda/provided:al2023"
-  timeout       = 30
-  memory_size   = 256
+  package_type = "Image"
+  # image_uri must point to a real ECR image in the same account.  A seed
+  # image is pushed once during bootstrap; after that, lifecycle.ignore_changes
+  # lets the deploy-backend workflow update it with aws lambda update-function-code.
+  image_uri   = "${var.api_ecr_repository_url}:latest"
+  timeout     = 30
+  memory_size = 256
 
   reserved_concurrent_executions = 10
 
@@ -120,12 +121,10 @@ resource "aws_lambda_function" "jobs" {
 
   function_name = "${var.project}-${each.key}"
   role          = aws_iam_role.jobs_lambda.arn
-  package_type  = "Image"
-  # Placeholder image for initial creation. The deploy-backend workflow
-  # replaces this with the real image on first push to main.
-  image_uri     = "public.ecr.aws/lambda/provided:al2023"
-  timeout       = 900
-  memory_size   = 512
+  package_type = "Image"
+  image_uri    = "${var.jobs_ecr_repository_url}:latest"
+  timeout      = 900
+  memory_size  = 512
 
   environment {
     variables = {

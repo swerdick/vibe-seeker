@@ -44,8 +44,10 @@ module "ecr" {
 module "compute" {
   source = "../modules/compute"
 
-  project    = var.project
-  ssm_prefix = var.ssm_prefix
+  project                 = var.project
+  ssm_prefix              = var.ssm_prefix
+  api_ecr_repository_url  = module.ecr.api_repository_url
+  jobs_ecr_repository_url = module.ecr.jobs_repository_url
 }
 
 module "cdn" {
