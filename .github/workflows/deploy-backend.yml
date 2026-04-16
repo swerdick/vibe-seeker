@@ -1,0 +1,79 @@
+name: Deploy Backend
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/deploy-backend.yml"
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push API image
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build \
+            -t $ECR_REGISTRY/${{ vars.ECR_API_REPOSITORY }}:$IMAGE_TAG \
+            -t $ECR_REGISTRY/${{ vars.ECR_API_REPOSITORY }}:latest \
+            -f backend/Containerfile.lambda backend/
+          docker push $ECR_REGISTRY/${{ vars.ECR_API_REPOSITORY }}:$IMAGE_TAG
+          docker push $ECR_REGISTRY/${{ vars.ECR_API_REPOSITORY }}:latest
+
+      - name: Update API Lambda
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          aws lambda update-function-code \
+            --function-name ${{ vars.LAMBDA_API_FUNCTION_NAME }} \
+            --image-uri $ECR_REGISTRY/${{ vars.ECR_API_REPOSITORY }}:$IMAGE_TAG
+          aws lambda wait function-updated \
+            --function-name ${{ vars.LAMBDA_API_FUNCTION_NAME }}
+
+      - name: Build and push jobs image
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build \
+            -t $ECR_REGISTRY/${{ vars.ECR_JOBS_REPOSITORY }}:$IMAGE_TAG \
+            -t $ECR_REGISTRY/${{ vars.ECR_JOBS_REPOSITORY }}:latest \
+            -f backend/Containerfile.jobs backend/
+          docker push $ECR_REGISTRY/${{ vars.ECR_JOBS_REPOSITORY }}:$IMAGE_TAG
+          docker push $ECR_REGISTRY/${{ vars.ECR_JOBS_REPOSITORY }}:latest
+
+      - name: Update background Lambdas
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          for fn in sync-venues sync-venue-vibes tag-enrichment; do
+            aws lambda update-function-code \
+              --function-name vibe-seeker-$fn \
+              --image-uri $ECR_REGISTRY/${{ vars.ECR_JOBS_REPOSITORY }}:$IMAGE_TAG
+            aws lambda wait function-updated \
+              --function-name vibe-seeker-$fn
+          done
