@@ -25,6 +25,8 @@ type mockTagCache struct {
 	cached          map[string][]lastfm.Tag
 	classifications map[string][]lastfm.Tag
 	upserted        map[string][]lastfm.Tag
+	staleNames      []string
+	staleErr        error
 }
 
 func newMockTagCache() *mockTagCache {
@@ -57,7 +59,7 @@ func (m *mockTagCache) GetClassificationsForArtist(_ context.Context, artistName
 }
 
 func (m *mockTagCache) GetStaleArtistNames(_ context.Context, _ time.Duration) ([]string, error) {
-	return nil, nil
+	return m.staleNames, m.staleErr
 }
 
 func TestEnrich_CacheHit(t *testing.T) {
@@ -163,6 +165,53 @@ func TestEnrich_MixedCacheAndFetch(t *testing.T) {
 	}
 	if len(result.ArtistTags) != 2 {
 		t.Errorf("expected 2 artist tags, got %d", len(result.ArtistTags))
+	}
+}
+
+func TestEnrichStale_NoStaleArtists(t *testing.T) {
+	cache := newMockTagCache()
+	lfm := &mockLastFM{}
+
+	enricher, _ := NewTagEnricher(lfm, cache)
+	if err := enricher.EnrichStale(context.Background()); err != nil {
+		t.Fatalf("EnrichStale returned error: %v", err)
+	}
+
+	if len(cache.upserted) != 0 {
+		t.Errorf("expected no enrichment upserts, got %d", len(cache.upserted))
+	}
+}
+
+func TestEnrichStale_RefreshesStaleArtists(t *testing.T) {
+	cache := newMockTagCache()
+	cache.staleNames = []string{"stale-artist-1", "stale-artist-2"}
+
+	lfm := &mockLastFM{
+		tags: map[string][]lastfm.Tag{
+			"stale-artist-1": {{Name: "rock", Count: 100}},
+			"stale-artist-2": {{Name: "jazz", Count: 80}},
+		},
+	}
+
+	enricher, _ := NewTagEnricher(lfm, cache)
+	if err := enricher.EnrichStale(context.Background()); err != nil {
+		t.Fatalf("EnrichStale returned error: %v", err)
+	}
+
+	for _, name := range cache.staleNames {
+		if _, ok := cache.upserted[name]; !ok {
+			t.Errorf("expected %q to be re-enriched", name)
+		}
+	}
+}
+
+func TestEnrichStale_ListError(t *testing.T) {
+	cache := newMockTagCache()
+	cache.staleErr = errors.New("db error")
+
+	enricher, _ := NewTagEnricher(&mockLastFM{}, cache)
+	if err := enricher.EnrichStale(context.Background()); err == nil {
+		t.Error("expected error when GetStaleArtistNames fails")
 	}
 }
 
