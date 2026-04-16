@@ -9,70 +9,26 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
+	"github.com/pseudo/vibe-seeker/backend/internal/app"
 	"github.com/pseudo/vibe-seeker/backend/internal/configuration"
 	"github.com/pseudo/vibe-seeker/backend/internal/handlers"
-	"github.com/pseudo/vibe-seeker/backend/internal/lastfm"
 	"github.com/pseudo/vibe-seeker/backend/internal/middleware"
-	"github.com/pseudo/vibe-seeker/backend/internal/service"
-	"github.com/pseudo/vibe-seeker/backend/internal/spotify"
-	"github.com/pseudo/vibe-seeker/backend/internal/store"
-	"github.com/pseudo/vibe-seeker/backend/internal/ticketmaster"
 )
 
 // New builds the HTTP server with all routes and middleware wired up.
 // Middleware chain (outermost first): otelhttp → CORS → mux
 func New(cfg configuration.Config, pool *pgxpool.Pool) (*http.Server, error) {
 
+	svc, err := app.New(cfg, pool)
+	if err != nil {
+		return nil, err
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", handlers.HealthCheck)
 
-	// --- Stores ---
-	userStore, err := store.NewUserStore(pool)
-	if err != nil {
-		return nil, fmt.Errorf("creating user store: %w", err)
-	}
-	artistTagStore, err := store.NewArtistTagStore(pool)
-	if err != nil {
-		return nil, fmt.Errorf("creating artist tag store: %w", err)
-	}
-	venueStore, err := store.NewVenueStore(pool)
-	if err != nil {
-		return nil, fmt.Errorf("creating venue store: %w", err)
-	}
-
-	// --- API Clients ---
-	spotifyClient := spotify.NewClient(cfg.SpotifyClientID, cfg.SpotifyClientSecret, cfg.SpotifyRedirectURI)
-	lastfmClient := lastfm.NewClient(cfg.LastFMAPIKey)
-	tmClient := ticketmaster.NewClient(cfg.TicketmasterAPIKey)
-
-	// --- Services ---
-	tagEnricher, err := service.NewTagEnricher(lastfmClient, artistTagStore)
-	if err != nil {
-		return nil, fmt.Errorf("creating tag enricher: %w", err)
-	}
-
-	authSvc, err := service.NewAuthService(spotifyClient, userStore, cfg.JWTSecret, cfg.TurnstileSecretKey)
-	if err != nil {
-		return nil, fmt.Errorf("creating auth service: %w", err)
-	}
-
-	vibeSvc, err := service.NewVibeService(spotifyClient, userStore, userStore, tagEnricher)
-	if err != nil {
-		return nil, fmt.Errorf("creating vibe service: %w", err)
-	}
-
-	venueSvc, err := service.NewVenueService(tmClient, venueStore, tagEnricher)
-	if err != nil {
-		return nil, fmt.Errorf("creating venue service: %w", err)
-	}
-
-	exploreSvc, err := service.NewExploreService(artistTagStore)
-	if err != nil {
-		return nil, fmt.Errorf("creating explore service: %w", err)
-	}
-
 	// --- Handlers ---
-	authHandler, err := handlers.NewAuthHandler(spotifyClient, authSvc, cfg.FrontendURL, cfg.SecureCookie)
+	authHandler, err := handlers.NewAuthHandler(svc.SpotifyClient, svc.AuthSvc, cfg.FrontendURL, cfg.SecureCookie)
 	if err != nil {
 		return nil, fmt.Errorf("creating auth handler: %w", err)
 	}
@@ -86,14 +42,14 @@ func New(cfg configuration.Config, pool *pgxpool.Pool) (*http.Server, error) {
 	requireAuth := middleware.RequireAuth(cfg.JWTSecret)
 	mux.Handle("GET /api/auth/me", requireAuth(http.HandlerFunc(authHandler.Me)))
 
-	vibeHandler, err := handlers.NewVibeHandler(vibeSvc)
+	vibeHandler, err := handlers.NewVibeHandler(svc.VibeSvc)
 	if err != nil {
 		return nil, fmt.Errorf("creating vibe handler: %w", err)
 	}
 	mux.Handle("POST /api/vibe/sync", requireAuth(http.HandlerFunc(vibeHandler.SyncVibe)))
 	mux.Handle("GET /api/vibe", requireAuth(http.HandlerFunc(vibeHandler.GetVibe)))
 
-	venueHandler, err := handlers.NewVenueHandler(venueSvc)
+	venueHandler, err := handlers.NewVenueHandler(svc.VenueSvc)
 	if err != nil {
 		return nil, fmt.Errorf("creating venue handler: %w", err)
 	}
@@ -101,7 +57,7 @@ func New(cfg configuration.Config, pool *pgxpool.Pool) (*http.Server, error) {
 	mux.Handle("POST /api/venues/vibes", requireAuth(http.HandlerFunc(venueHandler.SyncVenueVibes)))
 	mux.Handle("GET /api/venues", requireAuth(http.HandlerFunc(venueHandler.GetVenues)))
 
-	exploreHandler, err := handlers.NewExploreHandler(exploreSvc)
+	exploreHandler, err := handlers.NewExploreHandler(svc.ExploreSvc)
 	if err != nil {
 		return nil, fmt.Errorf("creating explore handler: %w", err)
 	}
