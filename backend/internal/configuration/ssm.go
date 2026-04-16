@@ -32,7 +32,10 @@ func LoadSSMConfig(ctx context.Context) error {
 
 	client := ssm.NewFromConfig(cfg)
 
-	var nextToken *string
+	var (
+		nextToken *string
+		loaded    int
+	)
 	for {
 		out, err := client.GetParametersByPath(ctx, &ssm.GetParametersByPathInput{
 			Path:           aws.String(prefix + "/"),
@@ -50,7 +53,8 @@ func LoadSSMConfig(ctx context.Context) error {
 			if err := os.Setenv(name, *p.Value); err != nil {
 				return fmt.Errorf("setting env var %s: %w", name, err)
 			}
-			slog.Info("loaded SSM parameter", "name", name)
+			slog.Debug("loaded SSM parameter", "name", name)
+			loaded++
 		}
 
 		if out.NextToken == nil {
@@ -59,5 +63,6 @@ func LoadSSMConfig(ctx context.Context) error {
 		nextToken = out.NextToken
 	}
 
+	slog.Info("loaded SSM parameters", "count", loaded)
 	return nil
 }
