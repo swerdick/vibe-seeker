@@ -55,7 +55,7 @@ jobs:
 
       - name: Comment PR
         if: always() && steps.plan.outcome != 'skipped'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const output = `#### Terraform Plan
