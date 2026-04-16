@@ -46,30 +46,34 @@ export default function TopBar({
     <div className="top-bar">
       <span className="top-bar-greeting">Hello, {displayName}</span>
       <div className="top-bar-actions">
-        <button className="button" onClick={onSyncVibe} disabled={syncing}>
-          {syncing ? "Syncing..." : "Sync Vibe"}
-        </button>
-        {vibeError && <span className="error">{vibeError}</span>}
-        <button
-          className="button"
-          onClick={onSyncVenues}
-          disabled={venuesSyncing}
-        >
-          {venuesSyncing ? "Syncing..." : "Sync Venues"}
-        </button>
-        {venueError && <span className="error">{venueError}</span>}
-        {venueCount !== null && (
-          <span className="venue-count">{venueCount} venues</span>
-        )}
-        <button
-          className="button"
-          onClick={onSyncVenueVibes}
-          disabled={vibesSyncing}
-        >
-          {vibesSyncing ? "Computing..." : "Sync Venue Vibes"}
-        </button>
-        {vibesComputed !== null && (
-          <span className="venue-count">{vibesComputed} venues updated</span>
+        {import.meta.env.VITE_SHOW_SYNC_CONTROLS !== "false" && (
+          <>
+            <button className="button" onClick={onSyncVibe} disabled={syncing}>
+              {syncing ? "Syncing..." : "Sync Vibe"}
+            </button>
+            {vibeError && <span className="error">{vibeError}</span>}
+            <button
+              className="button"
+              onClick={onSyncVenues}
+              disabled={venuesSyncing}
+            >
+              {venuesSyncing ? "Syncing..." : "Sync Venues"}
+            </button>
+            {venueError && <span className="error">{venueError}</span>}
+            {venueCount !== null && (
+              <span className="venue-count">{venueCount} venues</span>
+            )}
+            <button
+              className="button"
+              onClick={onSyncVenueVibes}
+              disabled={vibesSyncing}
+            >
+              {vibesSyncing ? "Computing..." : "Sync Venue Vibes"}
+            </button>
+            {vibesComputed !== null && (
+              <span className="venue-count">{vibesComputed} venues updated</span>
+            )}
+          </>
         )}
         <button className="button button-secondary" onClick={onLogout}>
           Log out
