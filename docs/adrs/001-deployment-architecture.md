@@ -112,7 +112,7 @@ GitHub Actions authenticates to AWS via static IAM credentials (stored as GitHub
 - S3: sync frontend assets
 - CloudFront: create invalidations
 
-Terraform Cloud authenticates via client credentials (`TERRAFORM_CLOUD_CLIENT_ID`/`TERRAFORM_CLOUD_CLIENT_SECRET`).
+Terraform state is stored in S3 (see `infra/bootstrap/`). The workflow uses the same `AWS_ACCESS_KEY`/`AWS_SECRET_KEY` to read/write state. A GitHub Actions `concurrency` group serializes applies to avoid state corruption without DynamoDB locking.
 
 Three deploy workflows:
 - `deploy-frontend.yml` — on push to main (`frontend/**`): build, S3 sync, CloudFront invalidation
@@ -127,7 +127,7 @@ Build-time values (deploy role ARN, bucket names, Turnstile site key) stored as 
 
 SSM hierarchy: `/vibe-seeker/{env}/{secret-name}`
 
-DATABASE_URL is auto-populated by Terraform from Neon module outputs. All other secrets are created with placeholder values (`lifecycle { ignore_changes = [value] }`) and populated manually via `aws ssm put-parameter`. Each Lambda function's IAM role grants `ssm:GetParameter` only for the specific parameters it needs.
+`DATABASE_URL` is sourced from the externally managed Neon database and stored in SSM manually, same as the other runtime secrets. Terraform defines the SSM parameters with placeholder values (`lifecycle { ignore_changes = [value] }`), and real values are populated manually via `aws ssm put-parameter`. Lambda IAM access is granted at the environment-prefix level using `ssm:GetParametersByPath` for `/vibe-seeker/{env}/`, rather than per-parameter `ssm:GetParameter` permissions.
 
 ### DNS: Cloudflare
 

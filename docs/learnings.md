@@ -86,8 +86,9 @@ as HCP Terraform workspace variables. Double the credential management surface.
 
 **The fix: S3 backend.** For a single-developer project, an S3 bucket with versioning and encryption is simpler, cheaper
 ($0/month at this scale), and eliminates an entire service dependency. The bucket is private with AES-256 encryption,
-public access blocked at every level, and versioning enabled for state recovery. DynamoDB locking is skipped — unnecessary
-with a single developer and CI serialization.
+public access blocked at every level, and versioning enabled for state recovery. DynamoDB locking is skipped in favor
+of a GitHub Actions `concurrency` group on the Terraform workflow — overlapping applies are serialized at the workflow
+level, which is sufficient for a single-developer setup where all applies flow through CI.
 
 ## The Algorithm Is Simple — The Data Pipeline Is Hard
 
