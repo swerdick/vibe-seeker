@@ -3,7 +3,7 @@
 **Status:** Amended
 **Date:** 2026-04-15 (originally 2026-03-27)
 
-**Amendment 2 (2026-04-15):** Switched DNS from Route 53 to Cloudflare (domain already hosted there), Terraform state from S3+DynamoDB bootstrap to HCP Terraform free tier, and domain to `vibeseeker.vingilot.dev` (subdomain of existing domain). Neon database managed externally (not in Terraform). AWS auth uses static keys initially (OIDC planned).
+**Amendment 2 (2026-04-15):** Switched DNS from Route 53 to Cloudflare (domain already hosted there), domain to `vibeseeker.vingilot.dev` (subdomain of existing domain). Terraform state stored in S3 with versioning and encryption (HCP Terraform was attempted but the split portal UX and credential model added unnecessary complexity — see `docs/learnings.md`). Neon database managed externally (not in Terraform). AWS auth uses static keys initially (OIDC planned).
 
 **Amendment 1 (2026-04-05):** Migrated backend compute from App Runner to Lambda + Function URL. AWS announced App Runner deprecation on 2026-03-31 (no new customers after 2026-04-30, maintenance mode for existing customers). See [Alternatives Considered](#alternatives-considered) for migration analysis.
 
@@ -150,12 +150,12 @@ infra/
     ├── main.tf       # Wires modules + ACM cert + Cloudflare DNS + SSM parameters
     ├── variables.tf
     ├── outputs.tf
-    ├── backend.tf    # HCP Terraform cloud{} block
+    ├── backend.tf    # S3 remote state
     ├── providers.tf  # AWS + Cloudflare provider config
     └── terraform.tfvars
 ```
 
-Neon database is managed externally (created via Neon console, connection string stored in SSM). No `database/` module — avoids dependency on the community `kislerdm/neon` provider. No `bootstrap/` directory — HCP Terraform manages state.
+Neon database is managed externally (created via Neon console, connection string stored in SSM). No `database/` module — avoids dependency on the community `kislerdm/neon` provider. `bootstrap/` creates the S3 state bucket (run once with local state).
 
 ### Environment-Specific Values
 
@@ -178,7 +178,7 @@ Neon database is managed externally (created via Neon console, connection string
 | S3 + CloudFront | ~$0.01 | Free tier covers demo traffic |
 | Neon | $0.00 | Free tier |
 | SSM | $0.00 | Standard parameters free |
-| HCP Terraform | $0.00 | Free tier (500 resources) |
+| S3 (tfstate) | $0.00 | Single object, negligible cost |
 
 Domain: `vibeseeker.vingilot.dev` — subdomain of existing `vingilot.dev`, no additional registration cost.
 

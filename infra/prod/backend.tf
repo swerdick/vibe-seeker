@@ -1,12 +1,7 @@
 terraform {
-  cloud {
-    organization = "vingilot"
-
-    workspaces {
-      name = "vibe-seeker-prod"
-    }
+  backend "s3" {
+    bucket = "vibe-seeker-tfstate"
+    key    = "prod/terraform.tfstate"
+    region = "us-east-1"
   }
 }
-
-# TODO: TF_API_TOKEN (HCP Terraform user token) expires 2027-04-15. Rotate
-# in GitHub Secrets and app.terraform.io before then.
