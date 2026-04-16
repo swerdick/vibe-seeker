@@ -12,7 +12,7 @@ resource "aws_acm_certificate" "app" {
   }
 }
 
-resource "cloudflare_record" "acm_validation" {
+resource "cloudflare_dns_record" "acm_validation" {
   for_each = {
     for dvo in aws_acm_certificate.app.domain_validation_options : dvo.domain_name => {
       name  = dvo.resource_record_name
@@ -31,7 +31,7 @@ resource "cloudflare_record" "acm_validation" {
 
 resource "aws_acm_certificate_validation" "app" {
   certificate_arn         = aws_acm_certificate.app.arn
-  validation_record_fqdns = [for record in cloudflare_record.acm_validation : record.hostname]
+  validation_record_fqdns = [for record in cloudflare_dns_record.acm_validation : record.hostname]
 }
 
 # --- Infrastructure Modules ---
@@ -69,7 +69,7 @@ module "cicd" {
 
 # --- DNS Alias Record ---
 
-resource "cloudflare_record" "app" {
+resource "cloudflare_dns_record" "app" {
   zone_id = var.cloudflare_zone_id
   name    = var.subdomain
   type    = "CNAME"
