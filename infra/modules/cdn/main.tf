@@ -43,6 +43,13 @@ resource "aws_cloudfront_origin_access_control" "s3" {
   signing_protocol                  = "sigv4"
 }
 
+resource "aws_cloudfront_origin_access_control" "lambda" {
+  name                              = "${var.project}-lambda-oac"
+  origin_access_control_origin_type = "lambda"
+  signing_behavior                  = "always"
+  signing_protocol                  = "sigv4"
+}
+
 # --- CloudFront Function for SPA Routing ---
 
 resource "aws_cloudfront_function" "spa_rewrite" {
@@ -80,8 +87,9 @@ resource "aws_cloudfront_distribution" "this" {
 
   # Lambda Function URL origin for API
   origin {
-    domain_name = var.lambda_function_url_hostname
-    origin_id   = "lambda-api"
+    domain_name              = var.lambda_function_url_hostname
+    origin_id                = "lambda-api"
+    origin_access_control_id = aws_cloudfront_origin_access_control.lambda.id
 
     custom_origin_config {
       http_port              = 80
