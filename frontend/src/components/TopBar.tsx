@@ -46,7 +46,7 @@ export default function TopBar({
     <div className="top-bar">
       <span className="top-bar-greeting">Hello, {displayName}</span>
       <div className="top-bar-actions">
-        {import.meta.env.VITE_SHOW_SYNC_CONTROLS !== "false" && (
+        {import.meta.env.VITE_SHOW_SYNC_CONTROLS === "true" && (
           <>
             <button className="button" onClick={onSyncVibe} disabled={syncing}>
               {syncing ? "Syncing..." : "Sync Vibe"}
