@@ -9,6 +9,7 @@ on:
     branches: [main]
     paths:
       - "infra/**"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -71,7 +72,7 @@ jobs:
             });
 
   apply:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment: production
     steps:
