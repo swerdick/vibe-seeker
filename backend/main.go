@@ -17,6 +17,11 @@ import (
 )
 
 func main() {
+	if err := configuration.LoadSSMConfig(context.Background()); err != nil {
+		slog.Error("failed to load SSM config", "error", err)
+		os.Exit(1)
+	}
+
 	cfg := configuration.NewConfig()
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
@@ -50,12 +55,27 @@ func main() {
 	}
 	defer pool.Close()
 
-	// TODO: acquire a Postgres advisory lock before migrating to prevent races
-	// in multi-instance deployments.
+	// Acquire an advisory lock to prevent concurrent migration races across
+	// Lambda cold starts.
+	conn, err := pool.Acquire(startupCtx)
+	if err != nil {
+		slog.Error("failed to acquire connection for migration lock", "error", err)
+		os.Exit(1)
+	}
+	if _, err := conn.Exec(startupCtx, "SELECT pg_advisory_lock(1)"); err != nil {
+		conn.Release()
+		slog.Error("failed to acquire migration advisory lock", "error", err)
+		os.Exit(1)
+	}
 	if err := migrations.Migrate(startupCtx, pool); err != nil {
+		conn.Release()
 		slog.Error("failed to run migrations", "error", err)
 		os.Exit(1)
 	}
+	if _, err := conn.Exec(startupCtx, "SELECT pg_advisory_unlock(1)"); err != nil {
+		slog.Error("failed to release migration advisory lock", "error", err)
+	}
+	conn.Release()
 
 	server, err := webserver.New(cfg, pool)
 	if err != nil {
