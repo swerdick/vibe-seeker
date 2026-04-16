@@ -13,11 +13,6 @@ variable "cloudflare_zone_id" {
   type        = string
 }
 
-variable "github_repository" {
-  description = "GitHub repository in owner/repo format"
-  type        = string
-}
-
 variable "project" {
   description = "Project name used as a prefix for resources"
   type        = string
