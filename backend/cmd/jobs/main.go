@@ -27,20 +27,25 @@ func main() {
 
 	cfg := configuration.NewConfig()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+	// initCtx is only for setup. lambda.Start blocks forever, so a deferred
+	// cancel on the init context would never run.
+	initCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 
-	pool, err := store.Connect(ctx, cfg.DatabaseURL)
+	pool, err := store.Connect(initCtx, cfg.DatabaseURL)
 	if err != nil {
+		cancel()
 		slog.Error("failed to connect to database", "error", err)
 		os.Exit(1)
 	}
+	defer pool.Close()
 
 	svc, err := app.New(cfg, pool)
 	if err != nil {
+		cancel()
 		slog.Error("failed to build services", "error", err)
 		os.Exit(1)
 	}
+	cancel()
 
 	jobName := os.Getenv("JOB_NAME")
 	slog.Info("starting job handler", "job", jobName)
