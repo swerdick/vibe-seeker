@@ -67,6 +67,19 @@ module "cicd" {
   cloudfront_distribution_arn = module.cdn.distribution_arn
 }
 
+# --- Lambda invocation permission for CloudFront ---
+# Placed at the top level (not in the compute module) to avoid a circular
+# module dependency: compute exports the Function URL (needed by CDN), and
+# CDN exports the distribution ARN (needed here to scope the permission).
+resource "aws_lambda_permission" "cloudfront_invoke_api" {
+  statement_id           = "AllowCloudFrontInvoke"
+  action                 = "lambda:InvokeFunctionUrl"
+  function_name          = module.compute.api_function_name
+  principal              = "cloudfront.amazonaws.com"
+  source_arn             = module.cdn.distribution_arn
+  function_url_auth_type = "AWS_IAM"
+}
+
 # --- DNS Alias Record ---
 
 resource "cloudflare_dns_record" "app" {
