@@ -84,17 +84,19 @@ func (e *TagEnricher) Enrich(ctx context.Context, artistNames []string, rateLimi
 // EnrichStale re-enriches all artists whose cached tags are older than the
 // configured ArtistTagCacheTTL. Used by the background tag enrichment job.
 func (e *TagEnricher) EnrichStale(ctx context.Context) error {
+	log := observability.Logger(ctx)
+
 	names, err := e.tagCache.GetStaleArtistNames(ctx, configuration.ArtistTagCacheTTL)
 	if err != nil {
 		return fmt.Errorf("listing stale artists: %w", err)
 	}
 
 	if len(names) == 0 {
-		slog.Info("no stale artist tags to refresh")
+		log.Info("no stale artist tags to refresh")
 		return nil
 	}
 
-	slog.Info("refreshing stale artist tags", "count", len(names))
+	log.Info("refreshing stale artist tags", "count", len(names))
 	e.Enrich(ctx, names, configuration.LastFMRateLimit)
 	return nil
 }
