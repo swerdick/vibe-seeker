@@ -66,6 +66,29 @@ When you pull data from Spotify, Last.fm, and Ticketmaster, nothing agrees:
 - **Data freshness**: Spotify tokens expire hourly. Last.fm tags are stable for weeks (or probably more). Ticketmaster events
   change daily. Solution: different TTLs for different data types (tokens: refresh on use, tags: 15 days, venues: 6 hours)
 
+## HCP Terraform Is Not Worth It for Small Projects
+
+We originally chose HCP Terraform (formerly Terraform Cloud) for state management because the ADR said it would be
+"simpler than S3+DynamoDB bootstrap." It was not.
+
+**The UX is split across two portals.** Organization management is at `portal.cloud.hashicorp.com`. Workspaces and runs
+are at `app.terraform.io`. These are supposedly the same product but navigating between them is confusing — links
+between portals don't always land where you expect, and features are split inconsistently.
+
+**Three different credential types.** HCP service principal credentials (client ID + client secret) are *not* the same as
+Terraform Cloud API tokens, even though both are created under the same umbrella product. The `hashicorp/setup-terraform`
+GitHub Action only accepts API tokens, not service principal credentials. We created credentials we couldn't use before
+discovering this.
+
+**Workspace variables duplicate GitHub secrets.** Because `terraform plan/apply` runs remotely in HCP Terraform, provider
+credentials (AWS keys, Cloudflare token) must be configured *both* as GitHub secrets (for non-Terraform workflows) *and*
+as HCP Terraform workspace variables. Double the credential management surface.
+
+**The fix: S3 backend.** For a single-developer project, an S3 bucket with versioning and encryption is simpler, cheaper
+($0/month at this scale), and eliminates an entire service dependency. The bucket is private with AES-256 encryption,
+public access blocked at every level, and versioning enabled for state recovery. DynamoDB locking is skipped — unnecessary
+with a single developer and CI serialization.
+
 ## The Algorithm Is Simple — The Data Pipeline Is Hard
 
 The actual matching math is ~30 lines of code (cosine similarity on two maps). The data pipeline to get clean, normalized, 
