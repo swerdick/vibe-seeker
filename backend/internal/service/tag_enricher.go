@@ -3,9 +3,11 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
+	"github.com/pseudo/vibe-seeker/backend/internal/configuration"
 	"github.com/pseudo/vibe-seeker/backend/internal/lastfm"
 	"github.com/pseudo/vibe-seeker/backend/internal/observability"
 	"github.com/pseudo/vibe-seeker/backend/internal/ratelimit"
@@ -23,6 +25,7 @@ type TagCache interface {
 	UpsertArtistTags(ctx context.Context, artistName string, tags []lastfm.Tag) error
 	UpsertArtistTagsWithSource(ctx context.Context, artistName string, tags []lastfm.Tag, source string) error
 	GetClassificationsForArtist(ctx context.Context, artistName string) ([]lastfm.Tag, error)
+	GetStaleArtistNames(ctx context.Context, olderThan time.Duration) ([]string, error)
 }
 
 // TagEnricher resolves artist tags using a cache-first strategy:
@@ -76,6 +79,24 @@ func (e *TagEnricher) Enrich(ctx context.Context, artistNames []string, rateLimi
 
 	log.Info("tag enrichment complete", "total", len(artistNames), "cache_hits", result.CacheHits, "api_calls", len(artistNames)-result.CacheHits)
 	return result
+}
+
+// EnrichStale re-enriches all artists whose cached tags are older than the
+// configured ArtistTagCacheTTL. Used by the background tag enrichment job.
+func (e *TagEnricher) EnrichStale(ctx context.Context) error {
+	names, err := e.tagCache.GetStaleArtistNames(ctx, configuration.ArtistTagCacheTTL)
+	if err != nil {
+		return fmt.Errorf("listing stale artists: %w", err)
+	}
+
+	if len(names) == 0 {
+		slog.Info("no stale artist tags to refresh")
+		return nil
+	}
+
+	slog.Info("refreshing stale artist tags", "count", len(names))
+	e.Enrich(ctx, names, configuration.LastFMRateLimit)
+	return nil
 }
 
 // enrichOne resolves tags for a single artist: cache → Last.fm → TM fallback.

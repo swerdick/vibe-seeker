@@ -56,6 +56,10 @@ func (m *mockTagCache) GetClassificationsForArtist(_ context.Context, artistName
 	return m.classifications[artistName], nil
 }
 
+func (m *mockTagCache) GetStaleArtistNames(_ context.Context, _ time.Duration) ([]string, error) {
+	return nil, nil
+}
+
 func TestEnrich_CacheHit(t *testing.T) {
 	cache := newMockTagCache()
 	cache.cached["artist one"] = []lastfm.Tag{{Name: "rock", Count: 100}}
