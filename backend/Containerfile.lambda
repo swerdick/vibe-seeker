@@ -9,7 +9,7 @@ COPY . .
 
 RUN CGO_ENABLED=0 go build -o vibe-seeker .
 
-FROM public.ecr.aws/awsguru/aws-lambda-web-adapter:0.8.4 AS adapter
+FROM public.ecr.aws/awsguru/aws-lambda-adapter:1.0.0 AS adapter
 
 FROM debian:bookworm-slim
 
