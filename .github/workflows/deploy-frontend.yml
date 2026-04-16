@@ -28,7 +28,8 @@ jobs:
       - name: Install and build
         working-directory: frontend
         env:
-          VITE_SHOW_SYNC_CONTROLS: "false"
+          # VITE_SHOW_SYNC_CONTROLS intentionally unset in prod. TopBar gates
+          # on === "true" so unset (or any other value) hides sync buttons.
           VITE_TURNSTILE_SITE_KEY: ${{ vars.VITE_TURNSTILE_SITE_KEY }}
           VITE_OTEL_ENABLED: "false"
         run: |
