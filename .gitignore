@@ -23,3 +23,7 @@ frontend/dist/
 .DS_Store
 
 .claude
+
+# Added by Neon
+.agents
+skills-lock.json
