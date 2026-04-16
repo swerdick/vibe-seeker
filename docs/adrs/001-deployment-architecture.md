@@ -1,9 +1,11 @@
 # ADR 001: Deployment Architecture
 
 **Status:** Amended
-**Date:** 2026-04-05 (originally 2026-03-27)
+**Date:** 2026-04-15 (originally 2026-03-27)
 
-**Amendment:** Migrated backend compute from App Runner to Lambda + Function URL. AWS announced App Runner deprecation on 2026-03-31 (no new customers after 2026-04-30, maintenance mode for existing customers). See [Alternatives Considered](#alternatives-considered) for migration analysis.
+**Amendment 2 (2026-04-15):** Switched DNS from Route 53 to Cloudflare (domain already hosted there), Terraform state from S3+DynamoDB bootstrap to HCP Terraform free tier, and domain to `vibeseeker.vingilot.dev` (subdomain of existing domain). Neon database managed externally (not in Terraform). AWS auth uses static keys initially (OIDC planned).
+
+**Amendment 1 (2026-04-05):** Migrated backend compute from App Runner to Lambda + Function URL. AWS announced App Runner deprecation on 2026-03-31 (no new customers after 2026-04-30, maintenance mode for existing customers). See [Alternatives Considered](#alternatives-considered) for migration analysis.
 
 ## Context
 
@@ -102,15 +104,17 @@ AWS WAF costs $8/month ($5 web ACL + $1/rule) — more than all other services c
 5. Application-level rate limiting (`internal/ratelimit/`)
 6. `robots.txt` + `noindex` meta tags
 
-### CI/CD: GitHub Actions with OIDC
+### CI/CD: GitHub Actions
 
-GitHub Actions authenticates to AWS via OIDC federation (no stored credentials). A `vibe-seeker-deploy` IAM role with least-privilege permissions:
+GitHub Actions authenticates to AWS via static IAM credentials (stored as GitHub secrets `AWS_ACCESS_KEY`/`AWS_SECRET_KEY`). Migration to OIDC federation is planned. A `vibe-seeker-deploy` IAM user with least-privilege permissions:
 - ECR: authenticate + push images
 - Lambda: update function code
 - S3: sync frontend assets
 - CloudFront: create invalidations
 
-Three workflows:
+Terraform Cloud authenticates via client credentials (`TERRAFORM_CLOUD_CLIENT_ID`/`TERRAFORM_CLOUD_CLIENT_SECRET`).
+
+Three deploy workflows:
 - `deploy-frontend.yml` — on push to main (`frontend/**`): build, S3 sync, CloudFront invalidation
 - `deploy-backend.yml` — on push to main (`backend/**`): build container, push to ECR, update Lambda function image
 - `tf-plan-apply.yml` — on PR (`infra/**`): plan + PR comment; on merge: apply
@@ -125,14 +129,11 @@ SSM hierarchy: `/vibe-seeker/{env}/{secret-name}`
 
 DATABASE_URL is auto-populated by Terraform from Neon module outputs. All other secrets are created with placeholder values (`lifecycle { ignore_changes = [value] }`) and populated manually via `aws ssm put-parameter`. Each Lambda function's IAM role grants `ssm:GetParameter` only for the specific parameters it needs.
 
-### Domain Registration
+### DNS: Cloudflare
 
-`.dev` TLD (requires HTTPS, which CloudFront + ACM provides). Recommended registrars:
-- **Porkbun** (~$10/year) — best value, requires manual NS delegation to Route 53
-- **Cloudflare** (~$10/year) — at-cost pricing, already used for Turnstile
-- **Route 53** ($14/year) — most convenient, auto-configured NS
+Domain `vibeseeker.vingilot.dev` is a subdomain of `vingilot.dev`, which is already hosted on Cloudflare. DNS records (ACM validation CNAMEs + app CNAME → CloudFront) are managed by Terraform using the `cloudflare/cloudflare` provider. No Route 53 hosted zone needed — saves $0.50/month.
 
-Route 53 hosted zone + ACM certificate managed by Terraform.
+ACM certificate for `vibeseeker.vingilot.dev` with DNS validation via Cloudflare records.
 
 ## Infrastructure as Code
 
@@ -143,19 +144,18 @@ infra/
 ├── modules/
 │   ├── cdn/          # S3 + CloudFront + SPA rewrite function
 │   ├── compute/      # Lambda functions + Function URLs + IAM roles + EventBridge schedules
-│   ├── database/     # Neon project + branch + database + role + endpoint
-│   ├── dns/          # Route 53 hosted zone + ACM certificate
 │   ├── ecr/          # Container registry + lifecycle policy
-│   └── cicd/         # GitHub OIDC provider + deploy IAM role
-├── bootstrap/        # S3 + DynamoDB for TF state (run once, local state)
+│   └── cicd/         # Deploy IAM user + policy (OIDC planned)
 └── prod/             # Production environment composition
-    ├── main.tf       # Wires modules together + SSM parameters
+    ├── main.tf       # Wires modules + ACM cert + Cloudflare DNS + SSM parameters
     ├── variables.tf
     ├── outputs.tf
-    ├── backend.tf    # S3 remote state config
-    ├── providers.tf  # AWS + Neon provider config
+    ├── backend.tf    # HCP Terraform cloud{} block
+    ├── providers.tf  # AWS + Cloudflare provider config
     └── terraform.tfvars
 ```
+
+Neon database is managed externally (created via Neon console, connection string stored in SSM). No `database/` module — avoids dependency on the community `kislerdm/neon` provider. No `bootstrap/` directory — HCP Terraform manages state.
 
 ### Environment-Specific Values
 
@@ -167,19 +167,20 @@ infra/
 
 ## Cost
 
-### Monthly: ~$0.61
+### Monthly: ~$0.11
 
 | Service | Cost | Notes |
 |---------|------|-------|
 | Lambda (API + background jobs) | $0.00 | Free tier covers demo traffic (1M req + 400K GB-sec/month) |
 | EventBridge Scheduler | $0.00 | Free for first 14M invocations/month |
-| Route 53 | $0.50 | Hosted zone |
+| Cloudflare DNS | $0.00 | Included with existing domain |
 | ECR | ~$0.10 | Container image storage |
 | S3 + CloudFront | ~$0.01 | Free tier covers demo traffic |
 | Neon | $0.00 | Free tier |
 | SSM | $0.00 | Standard parameters free |
+| HCP Terraform | $0.00 | Free tier (500 resources) |
 
-Domain registration: ~$10-14/year.
+Domain: `vibeseeker.vingilot.dev` — subdomain of existing `vingilot.dev`, no additional registration cost.
 
 Note: Lambda free tier is permanent (not 12-month limited). At demo traffic levels (~100 req/day), Lambda compute usage is ~18.75 GB-seconds/month — well under the 400,000 GB-second free tier. Even without the free tier, compute cost would be under $0.01/month.
 
