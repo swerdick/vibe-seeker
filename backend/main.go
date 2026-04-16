@@ -56,26 +56,42 @@ func main() {
 	defer pool.Close()
 
 	// Acquire an advisory lock to prevent concurrent migration races across
-	// Lambda cold starts.
-	conn, err := pool.Acquire(startupCtx)
-	if err != nil {
-		slog.Error("failed to acquire connection for migration lock", "error", err)
-		os.Exit(1)
-	}
-	if _, err := conn.Exec(startupCtx, "SELECT pg_advisory_lock(1)"); err != nil {
-		conn.Release()
-		slog.Error("failed to acquire migration advisory lock", "error", err)
-		os.Exit(1)
-	}
-	if err := migrations.Migrate(startupCtx, pool); err != nil {
-		conn.Release()
+	// Lambda cold starts. Wrapped in a closure so the defer always runs —
+	// leaking a locked session back into the pool would block every future
+	// cold start on pg_advisory_lock(1).
+	if err := func() error {
+		conn, err := pool.Acquire(startupCtx)
+		if err != nil {
+			return err
+		}
+
+		lockAcquired := false
+		defer func() {
+			if lockAcquired {
+				if _, err := conn.Exec(context.Background(), "SELECT pg_advisory_unlock(1)"); err != nil {
+					// If unlock fails, the session is poisoned — hijack the
+					// connection out of the pool and close it so the lock is
+					// released when Postgres tears down the session.
+					slog.Error("failed to release migration advisory lock; closing connection", "error", err)
+					if closeErr := conn.Hijack().Close(context.Background()); closeErr != nil {
+						slog.Error("failed to close hijacked connection", "error", closeErr)
+					}
+					return
+				}
+			}
+			conn.Release()
+		}()
+
+		if _, err := conn.Exec(startupCtx, "SELECT pg_advisory_lock(1)"); err != nil {
+			return err
+		}
+		lockAcquired = true
+
+		return migrations.Migrate(startupCtx, pool)
+	}(); err != nil {
 		slog.Error("failed to run migrations", "error", err)
 		os.Exit(1)
 	}
-	if _, err := conn.Exec(startupCtx, "SELECT pg_advisory_unlock(1)"); err != nil {
-		slog.Error("failed to release migration advisory lock", "error", err)
-	}
-	conn.Release()
 
 	server, err := webserver.New(cfg, pool)
 	if err != nil {
