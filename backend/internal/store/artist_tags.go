@@ -228,6 +228,30 @@ func (s *ArtistTagStore) GetRelatedTags(ctx context.Context, tag string, limit i
 	return relations, rows.Err()
 }
 
+// GetStaleArtistNames returns artist names whose cached tags are older than
+// the given duration. Used by the background tag enrichment job.
+func (s *ArtistTagStore) GetStaleArtistNames(ctx context.Context, olderThan time.Duration) ([]string, error) {
+	cutoff := time.Now().Add(-olderThan)
+	rows, err := s.pool.Query(ctx,
+		`SELECT DISTINCT artist_name FROM artist_tags WHERE fetched_at < $1 ORDER BY artist_name`,
+		cutoff,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("querying stale artist names: %w", err)
+	}
+	defer rows.Close()
+
+	var names []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, fmt.Errorf("scanning stale artist name: %w", err)
+		}
+		names = append(names, name)
+	}
+	return names, rows.Err()
+}
+
 // GetClassificationsForArtist returns Ticketmaster classifications for an artist
 // by looking up their shows' classifications.
 func (s *ArtistTagStore) GetClassificationsForArtist(ctx context.Context, artistName string) ([]lastfm.Tag, error) {
