@@ -1,0 +1,25 @@
+FROM golang:1.26-bookworm AS builder
+
+WORKDIR /app
+
+COPY go.mod go.sum* ./
+RUN go mod download
+
+COPY . .
+
+RUN CGO_ENABLED=0 go build -o vibe-seeker .
+
+FROM public.ecr.aws/awsguru/aws-lambda-web-adapter:0.8.4 AS adapter
+
+FROM debian:bookworm-slim
+
+COPY --from=adapter /lambda-adapter /opt/extensions/lambda-adapter
+
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+
+COPY --from=builder /app/vibe-seeker .
+
+ENV PORT=8080
+
+CMD ["./vibe-seeker"]
