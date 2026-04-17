@@ -90,6 +90,94 @@ public access blocked at every level, and versioning enabled for state recovery.
 of a GitHub Actions `concurrency` group on the Terraform workflow — overlapping applies are serialized at the workflow
 level, which is sufficient for a single-developer setup where all applies flow through CI.
 
+## Lambda Container Images Can't Come From Public ECR
+
+`aws_lambda_function` with `package_type = "Image"` rejects images from the public ECR gallery. I tried using
+`public.ecr.aws/lambda/provided:al2023` as a throwaway placeholder so Terraform could create the function before CI had
+pushed a real image. AWS returned `InvalidParameterValueException: Source image ... is not valid`. The image must live
+in a private ECR repo in the same AWS account as the function.
+
+This creates a chicken-and-egg for fresh deployments: the Lambda can't be created without an image, but CI can't push
+the image until ECR exists, and you'd like the whole thing to come up in one `terraform apply`. The fix was a one-time
+manual seed push before the first Lambda-creating apply: build the real image locally, push it to the just-created ECR
+repo, then re-apply. Subsequent deploys go through CI as intended.
+
+If I did this again I'd build this into the Terraform as a `null_resource` with a `local-exec` that runs `docker build`
+and `docker push` against the ECR output URL, gated on `terraform apply` the first time. But for a one-off bootstrap,
+the manual seed push was fine.
+
+## Terraform Provider Major Versions Quietly Rename Resources
+
+Upgrading to Cloudflare provider v5 renamed `cloudflare_record` to `cloudflare_dns_record`. The attribute model also
+changed (`value` became `content`, `hostname` was removed as a computed attribute, etc.). None of this was surfaced
+until `terraform plan` failed with "The provider cloudflare/cloudflare does not support resource type
+`cloudflare_record`" — which is accurate but doesn't point at the rename.
+
+The takeaway: major provider upgrades aren't drop-in. Lockfile commits (`.terraform.lock.hcl`) protect you from *surprise*
+upgrades, but once you intentionally bump a major version, budget time for resource renames and attribute migrations.
+Check the provider's upgrade guide in the Terraform registry before bumping.
+
+## `continue-on-error` Quietly Hides Real Failures
+
+The Terraform plan step in our CI workflow originally had `continue-on-error: true` so the "Comment PR" step downstream
+could still post the plan output regardless of exit code. Side effect: when `terraform plan` failed, the job reported
+*succeeded* in the GitHub Actions UI. The real error was only visible if you clicked into the step logs.
+
+The fix was to remove `continue-on-error` and gate the comment step on `if: always() && steps.plan.outcome != 'skipped'`.
+That way the plan step fails honestly, but the comment still posts so the PR author sees what broke.
+
+General rule: `continue-on-error: true` should almost always be paired with an explicit success/failure check later in
+the job, or replaced with `if: always()` on the dependent steps. Otherwise it's a silent "green even when red" switch.
+
+## Opt-Out Feature Flags Default to the Unsafe State
+
+Our sync buttons — which trigger expensive background jobs — were originally gated on
+`VITE_SHOW_SYNC_CONTROLS !== "false"`. The intent was "hide in prod, show in dev." The actual behavior was "show whenever
+the variable isn't literally the string 'false'," which includes the very common case of the variable being unset.
+Production deploys don't ship a `.env` file, so the buttons were visible in prod until Copilot flagged it during review.
+
+Flipping to `=== "true"` makes the safe state the default — controls are hidden unless an explicit opt-in fires. Same
+principle as `NODE_ENV === "development"` instead of `NODE_ENV !== "production"`: opt-in gates protect you from the
+misconfigured case, opt-out gates don't.
+
+Bonus gotcha: the test suite passed locally because my local `.env` set the flag, but failed in CI where no `.env`
+exists. The fix was to stub the env var in `test-setup.ts` so all tests see the authenticated-dev UX, which is what the
+tests are actually asserting about.
+
+## Building Lambda amd64 Images On Apple Silicon Is Slow
+
+First seed push for this project: `podman build --platform linux/amd64` of the Go backend took ~8 minutes per image on
+an M-series Mac. Native Go build in the same container on amd64 hardware is under 30 seconds. The difference is QEMU
+user-mode emulation, which translates every amd64 instruction into ARM64 at runtime.
+
+Two ways out:
+- **Do it once, do it in CI forever after.** GitHub Actions runners are native amd64. Local seed pushes are the only
+  time this matters; subsequent deploys happen in CI and complete in a minute or two.
+- **Switch Lambda to arm64.** AWS Lambda supports `architectures = ["arm64"]`, which is ~20% cheaper per GB-second *and*
+  builds natively on M-series Macs. For greenfield projects on Apple Silicon, arm64 Lambda should probably be the
+  default unless you have a dependency that doesn't ship ARM binaries.
+
+## AWS IAM for Terraform Bootstrap Is Non-Obvious
+
+The first Terraform apply failed with `AccessDenied` on a growing list of services. Attaching a single AWS-managed
+policy wasn't enough — our modules touch a surprisingly wide spread of services. The final list that made the apply
+succeed on the `gh-actions` bootstrap user was:
+
+- `AmazonEC2ContainerRegistryFullAccess` — ECR repos + lifecycle policies
+- `AmazonS3FullAccess` — frontend bucket + the state bucket
+- `CloudFrontFullAccess` — distribution + OAC + CloudFront Functions
+- `AWSLambda_FullAccess` — API and background job functions
+- `AmazonSSMFullAccess` — parameter store for runtime secrets
+- `IAMFullAccess` — deploy user + Lambda execution roles
+- `AWSCertificateManagerFullAccess` — the ACM cert for the custom domain
+- `AmazonEventBridgeSchedulerFullAccess` — background job cron schedules (this is a **separate service** from
+  EventBridge; `AmazonEventBridgeFullAccess` does not cover the `scheduler:*` API)
+
+The split between EventBridge and EventBridge Scheduler is the most confusing one — they share a product name in the
+AWS console but are distinct APIs with distinct IAM actions. Worth budgeting an iteration or two to discover what's
+missing when bootstrapping a new account: Terraform will tell you exactly which action is denied, but it'll only tell
+you one at a time per apply.
+
 ## The Algorithm Is Simple — The Data Pipeline Is Hard
 
 The actual matching math is ~30 lines of code (cosine similarity on two maps). The data pipeline to get clean, normalized, 
