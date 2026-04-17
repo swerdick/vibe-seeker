@@ -129,14 +129,18 @@ resource "aws_cloudfront_distribution" "this" {
     origin_access_control_id = aws_cloudfront_origin_access_control.s3.id
   }
 
-  # Lambda Function URL origin for API.
-  # No custom_origin_config — CloudFront recognizes *.lambda-url.*.on.aws
-  # as a managed origin type and handles HTTPS automatically. Adding
-  # custom_origin_config breaks OAC SigV4 signing.
+  # Lambda Function URL origin for API
   origin {
     domain_name              = var.lambda_function_url_hostname
     origin_id                = "lambda-api"
     origin_access_control_id = aws_cloudfront_origin_access_control.lambda.id
+
+    custom_origin_config {
+      http_port              = 80
+      https_port             = 443
+      origin_protocol_policy = "https-only"
+      origin_ssl_protocols   = ["TLSv1.2"]
+    }
   }
 
   # Default behavior: S3 frontend
