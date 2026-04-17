@@ -34,6 +34,44 @@ resource "aws_s3_bucket_policy" "frontend" {
   })
 }
 
+# --- CloudFront Access Logs ---
+
+resource "aws_s3_bucket" "cloudfront_logs" {
+  bucket_prefix = "${var.project}-cf-logs-"
+  force_destroy = false
+}
+
+resource "aws_s3_bucket_public_access_block" "cloudfront_logs" {
+  bucket = aws_s3_bucket.cloudfront_logs.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_ownership_controls" "cloudfront_logs" {
+  bucket = aws_s3_bucket.cloudfront_logs.id
+
+  rule {
+    object_ownership = "BucketOwnerPreferred"
+  }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "cloudfront_logs" {
+  bucket = aws_s3_bucket.cloudfront_logs.id
+
+  rule {
+    id     = "expire-old-logs"
+    status = "Enabled"
+    filter {}
+
+    expiration {
+      days = 30
+    }
+  }
+}
+
 # --- CloudFront Origin Access Control ---
 
 resource "aws_cloudfront_origin_access_control" "s3" {
@@ -78,6 +116,12 @@ resource "aws_cloudfront_distribution" "this" {
   price_class         = "PriceClass_100"
   http_version        = "http2and3"
 
+  logging_config {
+    include_cookies = false
+    bucket          = aws_s3_bucket.cloudfront_logs.bucket_regional_domain_name
+    prefix          = "cloudfront/"
+  }
+
   # S3 origin for frontend assets
   origin {
     domain_name              = aws_s3_bucket.frontend.bucket_regional_domain_name
@@ -85,18 +129,14 @@ resource "aws_cloudfront_distribution" "this" {
     origin_access_control_id = aws_cloudfront_origin_access_control.s3.id
   }
 
-  # Lambda Function URL origin for API
+  # Lambda Function URL origin for API.
+  # No custom_origin_config — CloudFront recognizes *.lambda-url.*.on.aws
+  # as a managed origin type and handles HTTPS automatically. Adding
+  # custom_origin_config breaks OAC SigV4 signing.
   origin {
     domain_name              = var.lambda_function_url_hostname
     origin_id                = "lambda-api"
     origin_access_control_id = aws_cloudfront_origin_access_control.lambda.id
-
-    custom_origin_config {
-      http_port              = 80
-      https_port             = 443
-      origin_protocol_policy = "https-only"
-      origin_ssl_protocols   = ["TLSv1.2"]
-    }
   }
 
   # Default behavior: S3 frontend
