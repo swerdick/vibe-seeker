@@ -11,7 +11,7 @@ interface TagRelation {
 }
 
 // SHA256 of empty string — used for POST requests with no body.
-const EMPTY_HASH =
+export const EMPTY_HASH =
   "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
 // CloudFront OAC for Lambda URLs requires x-amz-content-sha256 on POST/PUT.
@@ -26,6 +26,23 @@ async function contentHash(body?: string): Promise<string> {
     .join("");
 }
 
+// Shared POST helper that adds the x-amz-content-sha256 header required by
+// CloudFront OAC. All POST requests to the API should go through this.
+async function post(
+  url: string,
+  opts: { body?: string; headers?: Record<string, string> } = {},
+): Promise<Response> {
+  return fetch(url, {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "x-amz-content-sha256": await contentHash(opts.body),
+      ...opts.headers,
+    },
+    body: opts.body,
+  });
+}
+
 export async function fetchAuthMe(): Promise<User> {
   const res = await fetch("/api/auth/me", { credentials: "include" });
   if (!res.ok) throw new Error("unauthorized");
@@ -33,11 +50,7 @@ export async function fetchAuthMe(): Promise<User> {
 }
 
 export async function postLogout(): Promise<void> {
-  await fetch("/api/auth/logout", {
-    method: "POST",
-    credentials: "include",
-    headers: { "x-amz-content-sha256": EMPTY_HASH },
-  });
+  await post("/api/auth/logout");
 }
 
 export async function fetchVibe(): Promise<{
@@ -59,11 +72,7 @@ export async function fetchVenues(): Promise<{
 }
 
 export async function postSync(url: string): Promise<unknown> {
-  const res = await fetch(url, {
-    method: "POST",
-    credentials: "include",
-    headers: { "x-amz-content-sha256": EMPTY_HASH },
-  });
+  const res = await post(url);
   if (!res.ok) throw new Error("sync failed");
   return res.json();
 }
@@ -96,14 +105,9 @@ export async function anonymousLogin(
   turnstileToken: string,
 ): Promise<{ spotify_id: string; display_name: string }> {
   const body = JSON.stringify({ turnstile_token: turnstileToken });
-  const res = await fetch("/api/auth/anonymous", {
-    method: "POST",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      "x-amz-content-sha256": await contentHash(body),
-    },
+  const res = await post("/api/auth/anonymous", {
     body,
+    headers: { "Content-Type": "application/json" },
   });
   if (!res.ok) throw new Error("anonymous login failed");
   return res.json();
