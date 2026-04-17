@@ -127,6 +127,10 @@ describe("Home", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/auth/logout", {
       method: "POST",
       credentials: "include",
+      headers: {
+        "x-amz-content-sha256":
+          "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      },
     });
   });
 
