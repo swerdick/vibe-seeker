@@ -178,6 +178,59 @@ AWS console but are distinct APIs with distinct IAM actions. Worth budgeting an 
 missing when bootstrapping a new account: Terraform will tell you exactly which action is denied, but it'll only tell
 you one at a time per apply.
 
+## CloudFront OAC for Lambda URLs Has Underdocumented Requirements
+
+CloudFront Origin Access Control (OAC) lets you restrict a Lambda Function URL so only CloudFront can invoke it — no
+one can bypass CloudFront by hitting the Lambda URL directly. The concept is sound and the security benefit is real, but
+the setup has several gotchas that cost us hours of debugging.
+
+**You need TWO Lambda permissions, not one.** The AWS docs bury this in a code example: CloudFront OAC requires both
+`lambda:InvokeFunctionUrl` AND `lambda:InvokeFunction` permissions on the Lambda function. Every Terraform example and
+blog post I found only showed the first one. With only `InvokeFunctionUrl`, CloudFront's signed requests are rejected
+with a 403 `AccessDeniedException`. The error message doesn't hint at the missing permission — it just says "Forbidden."
+
+```hcl
+# Both are required. Missing the second one causes silent 403s.
+resource "aws_lambda_permission" "cloudfront_invoke_url" {
+  action                 = "lambda:InvokeFunctionUrl"
+  function_name          = aws_lambda_function.api.function_name
+  principal              = "cloudfront.amazonaws.com"
+  source_arn             = aws_cloudfront_distribution.this.arn
+  function_url_auth_type = "AWS_IAM"
+}
+
+resource "aws_lambda_permission" "cloudfront_invoke_function" {
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.api.function_name
+  principal     = "cloudfront.amazonaws.com"
+  source_arn    = aws_cloudfront_distribution.this.arn
+}
+```
+
+**POST and PUT requests require `x-amz-content-sha256` from the browser.** CloudFront OAC signs requests with SigV4,
+and Lambda validates the signature. For POST/PUT requests, Lambda requires the body to be included in the signature via
+a SHA256 hash in the `x-amz-content-sha256` header. The gotcha: this header must be sent by the *client* (browser), not
+added by CloudFront. CloudFront includes whatever the viewer sends in its SigV4 computation.
+
+This means your frontend JavaScript needs to compute `SHA256(request_body)` for every POST request and include it as a
+header. For empty-body POSTs, it's a constant (`e3b0c44...`). For POSTs with bodies, you compute it dynamically via
+`crypto.subtle.digest("SHA-256", body)`. We centralized this into a shared `post()` helper in `api.ts`.
+
+Without this header, GET requests work fine (no body to hash) but every POST returns 403. The error message is the same
+generic "Forbidden" with no mention of the missing hash.
+
+**The Lambda URL origin needs `custom_origin_config`.** Unlike S3 origins (which CloudFront auto-detects), Lambda
+Function URL origins are custom origins and require explicit `custom_origin_config` with `origin_protocol_policy =
+"https-only"`. Removing it (as I tried while debugging the 403) causes CloudFront to treat the Lambda URL domain as an
+S3 bucket, failing with "The parameter Origin DomainName does not refer to a valid S3 bucket." The OAC attaches
+alongside `custom_origin_config` — they're not mutually exclusive.
+
+**Debugging is hard.** Direct SigV4 curl to the Lambda URL works (`curl --aws-sigv4`), but CloudFront → Lambda returns
+403 with no actionable details. Standard CloudFront logs don't include auth headers. The only diagnostic that helped was
+checking the Lambda resource policy (`aws lambda get-policy`) and comparing it to the AWS docs' example — that's how we
+found the missing `InvokeFunction` permission. For the content hash issue, we found it in a single sentence in the docs
+that's easy to miss.
+
 ## The Algorithm Is Simple — The Data Pipeline Is Hard
 
 The actual matching math is ~30 lines of code (cosine similarity on two maps). The data pipeline to get clean, normalized, 
