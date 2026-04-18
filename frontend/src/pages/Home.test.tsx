@@ -156,12 +156,12 @@ describe("Home", () => {
     // Graph renders node labels as SVG text; d3-force simulation may take a tick.
     await waitFor(
       () => {
-        expect(screen.getByText("rock")).toBeInTheDocument();
+        expect(screen.getAllByText("rock").length).toBeGreaterThan(0);
       },
       { timeout: 3000 },
     );
-    expect(screen.getByText("indie")).toBeInTheDocument();
-    expect(screen.getByText("dream pop")).toBeInTheDocument();
+    expect(screen.getAllByText("indie").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("dream pop").length).toBeGreaterThan(0);
   });
 
   it("calls sync endpoint and refreshes vibes on click", async () => {
@@ -194,7 +194,7 @@ describe("Home", () => {
 
     await waitFor(
       () => {
-        expect(screen.getByText("rock")).toBeInTheDocument();
+        expect(screen.getAllByText("rock").length).toBeGreaterThan(0);
       },
       { timeout: 3000 },
     );

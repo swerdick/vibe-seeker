@@ -33,9 +33,9 @@ export default function VenueMap({
   onMinMatchChange,
 }: VenueMapProps) {
   return (
-    <div className="map-area">
+    <div className="map-area" data-tour="venue-map">
       <div className="map-controls">
-        <label className="match-slider-label">
+        <label className="match-slider-label" data-tour="match-slider">
           Min match: {Math.round(minMatch * 100)}%
           <input
             type="range"

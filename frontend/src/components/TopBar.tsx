@@ -12,6 +12,7 @@ interface TopBarProps {
   onSyncVenues?: () => void;
   onSyncVenueVibes?: () => void;
   onLogout?: () => void;
+  onStartTour?: () => void;
 }
 
 export default function TopBar({
@@ -28,13 +29,24 @@ export default function TopBar({
   onSyncVenues,
   onSyncVenueVibes,
   onLogout,
+  onStartTour,
 }: TopBarProps) {
   if (anonymous) {
     return (
       <div className="top-bar">
         <span className="top-bar-greeting">Vibe Seeker</span>
         <div className="top-bar-actions">
-          <a href="/api/auth/login" className="button">
+          {onStartTour && (
+            <button
+              className="tour-help-btn"
+              onClick={onStartTour}
+              title="Show tutorial"
+              aria-label="Show tutorial"
+            >
+              ?
+            </button>
+          )}
+          <a href="/api/auth/login" className="button" title="Spotify login is currently limited to approved accounts" data-tour="sync-vibe">
             Connect Spotify
           </a>
         </div>
@@ -46,7 +58,17 @@ export default function TopBar({
     <div className="top-bar">
       <span className="top-bar-greeting">Hello, {displayName}</span>
       <div className="top-bar-actions">
-        <button className="button" onClick={onSyncVibe} disabled={syncing}>
+        {onStartTour && (
+          <button
+            className="tour-help-btn"
+            onClick={onStartTour}
+            title="Show tutorial"
+            aria-label="Show tutorial"
+          >
+            ?
+          </button>
+        )}
+        <button className="button" onClick={onSyncVibe} disabled={syncing} data-tour="sync-vibe">
           {syncing ? "Syncing..." : "Sync Vibe"}
         </button>
         {vibeError && <span className="error">{vibeError}</span>}

@@ -41,6 +41,28 @@
   gap: 0.5rem;
 }
 
+.tour-help-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background-color: transparent;
+  border: 1px solid #555;
+  border-radius: 50%;
+  color: #888;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+}
+
+.tour-help-btn:hover {
+  color: #fff;
+  border-color: #1db954;
+}
+
 .venue-count {
   font-size: 0.85rem;
   color: #999;
@@ -110,6 +132,73 @@
   color: #666;
   font-size: 0.9rem;
   text-align: center;
+}
+
+/* Vibe panel — wraps graph + list overlay */
+.vibe-panel {
+  flex: 1;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.vibe-view-toggle {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  z-index: 10;
+  display: flex;
+  gap: 0.25rem;
+}
+
+.vibe-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background-color: #333;
+  border: 1px solid #555;
+  border-radius: 4px;
+  color: #888;
+  cursor: pointer;
+  transition: color 0.2s, background-color 0.2s;
+}
+
+.vibe-toggle-btn:hover {
+  background-color: #444;
+  color: #ccc;
+}
+
+.vibe-toggle-btn.active {
+  background-color: #1db954;
+  border-color: #1db954;
+  color: #fff;
+}
+
+.vibe-list-overlay {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background-color: #1a1a1a;
+  transform: translateX(100%);
+  transition: transform 0.3s ease;
+  z-index: 5;
+  overflow-y: auto;
+}
+
+.vibe-list-overlay.open {
+  transform: translateX(0);
+}
+
+.vibe-list-overlay .sidebar {
+  width: 100%;
+  border-left: none;
+  box-sizing: border-box;
 }
 
 /* Vibe Graph */
