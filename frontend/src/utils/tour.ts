@@ -1,13 +1,25 @@
 const TOUR_COMPLETE_KEY = "vibe-seeker-tour-complete";
 
 export function shouldAutoStartTour(): boolean {
-  return !localStorage.getItem(TOUR_COMPLETE_KEY);
+  try {
+    return !localStorage.getItem(TOUR_COMPLETE_KEY);
+  } catch {
+    return false;
+  }
 }
 
 export function markTourComplete() {
-  localStorage.setItem(TOUR_COMPLETE_KEY, "true");
+  try {
+    localStorage.setItem(TOUR_COMPLETE_KEY, "true");
+  } catch {
+    // Storage unavailable (e.g. private browsing) — tour will re-show next visit.
+  }
 }
 
 export function resetTourComplete() {
-  localStorage.removeItem(TOUR_COMPLETE_KEY);
+  try {
+    localStorage.removeItem(TOUR_COMPLETE_KEY);
+  } catch {
+    // Storage unavailable.
+  }
 }

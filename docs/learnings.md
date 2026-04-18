@@ -213,8 +213,16 @@ a SHA256 hash in the `x-amz-content-sha256` header. The gotcha: this header must
 added by CloudFront. CloudFront includes whatever the viewer sends in its SigV4 computation.
 
 This means your frontend JavaScript needs to compute `SHA256(request_body)` for every POST request and include it as a
-header. For empty-body POSTs, it's a constant (`e3b0c44...`). For POSTs with bodies, you compute it dynamically via
-`crypto.subtle.digest("SHA-256", body)`. We centralized this into a shared `post()` helper in `api.ts`.
+header. For empty-body POSTs, it's a constant (`e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`).
+For POSTs with bodies, you compute it dynamically:
+
+```js
+const encoded = new TextEncoder().encode(body);
+const digest = await crypto.subtle.digest("SHA-256", encoded);
+const hash = Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, "0")).join("");
+```
+
+We centralized this into a shared `post()` helper in `frontend/src/utils/api.ts`.
 
 Without this header, GET requests work fine (no body to hash) but every POST returns 403. The error message is the same
 generic "Forbidden" with no mention of the missing hash.
