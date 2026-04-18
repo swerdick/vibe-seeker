@@ -12,6 +12,10 @@ export default function Login() {
       <a href="/api/auth/login" className="button">
         Log in with Spotify
       </a>
+      <p className="login-disclaimer">
+        Spotify login is currently limited to approved accounts.
+        If you have to ask, you're probably not on the list — sorry!
+      </p>
       <Link to="/explore" className="button button-secondary" style={{ marginTop: "0.75rem" }}>
         Explore without login
       </Link>
