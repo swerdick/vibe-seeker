@@ -48,12 +48,13 @@ export default function Home() {
   );
 
   const vibeGenres = useMemo(() => {
+    if (viewMode !== "list") return null;
     const genres: Record<string, number> = {};
     for (const node of graph.nodes) {
       genres[node.id] = node.prevalence;
     }
     return Object.keys(genres).length > 0 ? genres : null;
-  }, [graph.nodes]);
+  }, [graph.nodes, viewMode]);
 
   const vibeSync = useSyncAction<{ vibe_count: number }>(
     "/api/vibe/sync",
@@ -141,7 +142,7 @@ export default function Home() {
             onSelectAll={graph.selectAll}
             onSelectNone={graph.selectNone}
           />
-          <div className={`vibe-list-overlay ${viewMode === "list" ? "open" : ""}`} aria-hidden={viewMode !== "list"}>
+          <div className={`vibe-list-overlay ${viewMode === "list" ? "open" : ""}`} aria-hidden={viewMode !== "list"} inert={viewMode !== "list" ? true : undefined}>
             <VibeSidebar
               genres={vibeGenres}
               selectedGenres={graph.selectedTags}

@@ -124,7 +124,7 @@ export default function Explore() {
             onSelectAll={graph.selectAll}
             onSelectNone={graph.selectNone}
           />
-          <div className={`vibe-list-overlay ${viewMode === "list" ? "open" : ""}`} aria-hidden={viewMode !== "list"}>
+          <div className={`vibe-list-overlay ${viewMode === "list" ? "open" : ""}`} aria-hidden={viewMode !== "list"} inert={viewMode !== "list" ? true : undefined}>
             <VibeSidebar
               genres={vibesFromGraph}
               selectedGenres={graph.selectedTags}
