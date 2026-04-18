@@ -8,6 +8,10 @@ vi.stubEnv("VITE_SHOW_SYNC_CONTROLS", "true");
 
 vi.mock("react-map-gl/maplibre", () => import("./__mocks__/react-map-gl-maplibre"));
 vi.mock("maplibre-gl/dist/maplibre-gl.css", () => ({}));
+vi.mock("react-joyride", () => ({
+  Joyride: () => null,
+  STATUS: { FINISHED: "finished", SKIPPED: "skipped" },
+}));
 
 // ResizeObserver is not available in jsdom.
 if (typeof globalThis.ResizeObserver === "undefined") {

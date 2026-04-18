@@ -95,11 +95,11 @@ describe("Explore", () => {
     renderExplore();
     await waitFor(
       () => {
-        expect(screen.getByText("rock")).toBeInTheDocument();
+        expect(screen.getAllByText("rock").length).toBeGreaterThan(0);
       },
       { timeout: 3000 },
     );
-    expect(screen.getByText("indie")).toBeInTheDocument();
+    expect(screen.getAllByText("indie").length).toBeGreaterThan(0);
   });
 
   it("shows captcha screen when not authenticated", async () => {
