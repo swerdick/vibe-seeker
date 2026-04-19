@@ -16,7 +16,7 @@
     "@opentelemetry/instrumentation-document-load": "^0.59.0",
     "@opentelemetry/instrumentation-fetch": "^0.214.0",
     "@opentelemetry/resources": "^2.6.1",
-    "@opentelemetry/sdk-trace-web": "^2.6.1",
+    "@opentelemetry/sdk-trace-web": "^2.7.0",
     "@opentelemetry/semantic-conventions": "^1.40.0",
     "d3-force": "^3.0.0",
     "maplibre-gl": "^5.23.0",
