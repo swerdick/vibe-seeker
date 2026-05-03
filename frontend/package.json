@@ -22,7 +22,7 @@
     "maplibre-gl": "^5.23.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.5",
-    "react-joyride": "^3.0.2",
+    "react-joyride": "^3.1.0",
     "react-map-gl": "^8.1.1",
     "react-router-dom": "^7.14.2",
     "web-vitals": "^5.2.0"
