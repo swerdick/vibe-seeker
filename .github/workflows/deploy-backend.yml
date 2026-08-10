@@ -1,11 +1,17 @@
 name: Deploy Backend
 on:
-  push:
-    branches: [main]
-    paths:
-      - "backend/**"
-      - ".github/workflows/deploy-backend.yml"
+  workflow_call:
+    inputs:
+      image-tag:
+        description: "Tag for the container images (plain semver, e.g. 1.4.0)"
+        required: true
+        type: string
   workflow_dispatch:
+    inputs:
+      image-tag:
+        description: "Tag to build and deploy (e.g. 1.4.0). Select the matching vX.Y.Z tag in 'Use workflow from' to rebuild that release."
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -17,6 +23,8 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: production
+    env:
+      IMAGE_TAG: ${{ inputs.image-tag }}
     steps:
       - uses: actions/checkout@v4
 
@@ -34,7 +42,6 @@ jobs:
       - name: Build and push API image
         env:
           ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
         run: |
           docker build \
             -t $ECR_REGISTRY/${{ vars.ECR_API_REPOSITORY }}:$IMAGE_TAG \
@@ -46,7 +53,6 @@ jobs:
       - name: Update API Lambda
         env:
           ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
         run: |
           aws lambda update-function-code \
             --function-name ${{ vars.LAMBDA_API_FUNCTION_NAME }} \
@@ -57,7 +63,6 @@ jobs:
       - name: Build and push jobs image
         env:
           ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
         run: |
           docker build \
             -t $ECR_REGISTRY/${{ vars.ECR_JOBS_REPOSITORY }}:$IMAGE_TAG \
@@ -69,7 +74,6 @@ jobs:
       - name: Update background Lambdas
         env:
           ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
         run: |
           for fn in sync-venues sync-venue-vibes tag-enrichment; do
             aws lambda update-function-code \
