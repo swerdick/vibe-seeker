@@ -26,7 +26,7 @@ jobs:
     env:
       IMAGE_TAG: ${{ inputs.image-tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
