@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   generate-changelog:
-    if: github.actor != 'dependabot[bot]'
+    if: github.actor != 'dependabot[bot]' && !startsWith(github.head_ref, 'release-please--')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -135,7 +135,7 @@ jobs:
           echo -e "$FINAL" | gh pr edit "$PR_NUMBER" --body-file -
 
   label-paths:
-    if: github.actor != 'dependabot[bot]'
+    if: github.actor != 'dependabot[bot]' && !startsWith(github.head_ref, 'release-please--')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6

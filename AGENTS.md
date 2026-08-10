@@ -26,3 +26,18 @@ Refer to `../project-hub/vibe-seeker/` for architectural documents.
 
 - Always run `just ci` before pushing a commit.
 - Always run `just ci` as the last step of any completed task to validate changes.
+
+## Release
+
+Releases are managed by release-please (single repo-wide version, manifest mode).
+
+- Merges to `main` accumulate on an auto-maintained release PR; merging that PR
+  tags `vX.Y.Z`, creates a GitHub release, and triggers the only automatic
+  production deploy (backend images tagged with the plain semver + `latest`,
+  Lambdas updated, frontend synced to S3).
+- Regular merges to `main` do NOT deploy. Manual redeploys: run
+  `deploy-backend.yml` / `deploy-frontend.yml` via workflow_dispatch
+  (backend takes an `image-tag` input).
+- Use conventional commits; only `feat`/`fix`/breaking commits create or bump
+  the release PR. To force a specific version, add a `Release-As: X.Y.Z`
+  footer to a commit body.
