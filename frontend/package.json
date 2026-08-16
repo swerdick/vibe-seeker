@@ -19,7 +19,7 @@
     "@opentelemetry/sdk-trace-web": "^2.7.0",
     "@opentelemetry/semantic-conventions": "^1.43.0",
     "d3-force": "^3.0.0",
-    "maplibre-gl": "^6.2.0",
+    "maplibre-gl": "^6.3.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.8",
     "react-joyride": "^3.2.0",
