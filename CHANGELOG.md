@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.0.1](https://github.com/swerdick/vibe-seeker/compare/v1.0.0...v1.0.1) (2026-08-10)
+
+
+### Build & Dependencies
+
+* **deps-dev:** bump @testing-library/jest-dom in /frontend ([64d4593](https://github.com/swerdick/vibe-seeker/commit/64d4593f76ff403462e9d374d24f79e307ed6867))
+* **deps-dev:** bump @types/node from 25.9.2 to 26.1.2 in /frontend ([143e9b3](https://github.com/swerdick/vibe-seeker/commit/143e9b32054302951266d026ff7c7352c292c2d1))
+* **deps-dev:** bump jsdom from 29.1.1 to 30.0.1 in /frontend ([0bca973](https://github.com/swerdick/vibe-seeker/commit/0bca97376f1111b6e81684d62e480bd641008423))
+* **deps:** bump maplibre-gl from 5.24.0 to 6.2.0 in /frontend ([71be77f](https://github.com/swerdick/vibe-seeker/commit/71be77f58388fd51690363c2e9f23c2ce22450a5))
+
 ## 1.0.0 (2026-08-10)
 
 
